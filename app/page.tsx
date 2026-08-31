@@ -1,17 +1,153 @@
-export default function Home() {
+import Link from "next/link";
+import { getRecentScripts } from "@/lib/queries";
+import { editionLabel } from "@/lib/types";
+
+const QUICK_ACTIONS = [
+  {
+    href: "/scripts",
+    title: "Browse scripts",
+    description: "Search the library by name, author, or character.",
+    icon: "📜",
+    disabled: false,
+  },
+  {
+    href: "/characters",
+    title: "Character reference",
+    description: "Look up any Townsfolk, Outsider, Minion, or Demon.",
+    icon: "🎭",
+    disabled: false,
+  },
+  {
+    href: "/scripts/new",
+    title: "Upload a script",
+    description: "Sign in to share your own custom script. Coming soon.",
+    icon: "⬆️",
+    disabled: true,
+  },
+  {
+    href: "/games",
+    title: "Track your games",
+    description: "Log wins and losses and build your player stats. Coming soon.",
+    icon: "🎲",
+    disabled: true,
+  },
+  {
+    href: "/grimoire",
+    title: "Online grimoire",
+    description: "Run a game live with a shared, real-time grimoire. Coming soon.",
+    icon: "🕯️",
+    disabled: true,
+  },
+  {
+    href: "/groups",
+    title: "Groups & leaderboards",
+    description: "Track standings with your regular playgroup. Coming soon.",
+    icon: "🏆",
+    disabled: true,
+  },
+] as const;
+
+export default async function Home() {
+  const recentScripts = await getRecentScripts(6);
+
   return (
-    <main className="flex flex-1 flex-col items-center justify-center px-6 py-24 text-center">
-      <h1 className="max-w-2xl text-4xl font-semibold tracking-tight sm:text-5xl">
-        A better home for Blood on the Clocktower custom scripts
-      </h1>
-      <p className="mt-6 max-w-xl text-lg text-zinc-600 dark:text-zinc-400">
-        botchub is a community-run tool for browsing, building, and sharing
-        custom scripts &mdash; built to stay reliably up. Script browsing,
-        the upload tool, and character stats are on the way.
-      </p>
-      <p className="mt-10 text-sm font-medium text-zinc-500 dark:text-zinc-500">
-        🚧 Under construction &mdash; check back soon.
-      </p>
+    <main className="flex flex-1 flex-col">
+      <section className="border-b border-black/[.08] px-6 py-20 text-center dark:border-white/[.145]">
+        <h1 className="mx-auto max-w-2xl text-4xl font-semibold tracking-tight sm:text-5xl">
+          A better home for Blood on the Clocktower
+        </h1>
+        <p className="mx-auto mt-6 max-w-xl text-lg text-zinc-600 dark:text-zinc-400">
+          botchub is a community-run hub for the game — starting with a
+          script library built to stay reliably up, with game tracking and
+          live play tools on the way. Free, no account needed to browse.
+        </p>
+
+        <form
+          action="/scripts"
+          className="mx-auto mt-10 flex w-full max-w-md items-center gap-2"
+        >
+          <input
+            type="search"
+            name="q"
+            placeholder="Search scripts by name or author…"
+            className="w-full rounded-full border border-black/[.12] bg-white px-5 py-3 text-sm outline-none focus:border-zinc-400 dark:border-white/[.15] dark:bg-zinc-900"
+          />
+          <button
+            type="submit"
+            className="shrink-0 rounded-full bg-foreground px-5 py-3 text-sm font-medium text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc]"
+          >
+            Search
+          </button>
+        </form>
+      </section>
+
+      <section className="mx-auto grid w-full max-w-5xl gap-4 px-6 py-14 sm:grid-cols-2 lg:grid-cols-3">
+        {QUICK_ACTIONS.map((action) => {
+          const cardClasses =
+            "rounded-2xl border border-black/[.08] p-6 transition-colors dark:border-white/[.145]";
+          const body = (
+            <>
+              <div className="text-2xl">{action.icon}</div>
+              <div className="mt-3 font-semibold">{action.title}</div>
+              <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                {action.description}
+              </div>
+            </>
+          );
+
+          return action.disabled ? (
+            <div
+              key={action.href}
+              aria-disabled="true"
+              className={`${cardClasses} cursor-not-allowed opacity-60`}
+            >
+              {body}
+            </div>
+          ) : (
+            <Link
+              key={action.href}
+              href={action.href}
+              className={`${cardClasses} hover:border-zinc-400 dark:hover:border-zinc-600`}
+            >
+              {body}
+            </Link>
+          );
+        })}
+      </section>
+
+      <section className="mx-auto w-full max-w-5xl px-6 pb-20">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-xl font-semibold">Recently added</h2>
+          <Link
+            href="/scripts"
+            className="text-sm font-medium text-zinc-600 hover:underline dark:text-zinc-400"
+          >
+            View all scripts →
+          </Link>
+        </div>
+
+        {recentScripts.length === 0 ? (
+          <p className="mt-6 text-sm text-zinc-600 dark:text-zinc-400">
+            No scripts yet.
+          </p>
+        ) : (
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {recentScripts.map((script) => (
+              <Link
+                key={script.id}
+                href={`/scripts/${script.id}`}
+                className="rounded-2xl border border-black/[.08] p-5 transition-colors hover:border-zinc-400 dark:border-white/[.145] dark:hover:border-zinc-600"
+              >
+                <div className="font-semibold">{script.name}</div>
+                <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                  {editionLabel(script.edition)}
+                  {script.description ? ` · ${script.description}` : ""}
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
     </main>
   );
 }
