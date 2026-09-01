@@ -13,6 +13,16 @@ const nextConfig: NextConfig = {
         hostname: "raw.githubusercontent.com",
         pathname: "/bra1n/townsquare/**",
       },
+      {
+        // Icons for official characters not covered by the townsquare set
+        // above (see supabase/migrations/20260901000000_carousel_characters.sql)
+        // — hotlinked from the official Blood on the Clocktower wiki, whose
+        // MediaWiki-hosted image URLs are stable long-term. Same Storage
+        // migration caveat as the pattern above applies here too.
+        protocol: "https",
+        hostname: "wiki.bloodontheclocktower.com",
+        pathname: "/images/**",
+      },
     ],
   },
 };

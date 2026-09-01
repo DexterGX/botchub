@@ -6,6 +6,7 @@ import {
   getScriptById,
   incrementScriptViewCount,
 } from "@/lib/queries";
+import { buildScriptToolUrl } from "@/lib/scriptTool";
 import {
   TEAM_LABELS,
   TEAM_ORDER,
@@ -42,6 +43,7 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
     Array.isArray(meta?.firstNight) || Array.isArray(meta?.otherNight);
 
   const jsonUrl = `/api/scripts/${script.id}/json`;
+  const scriptToolUrl = buildScriptToolUrl(script.script_json);
 
   return (
     <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-12">
@@ -73,7 +75,7 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
 
       <div className="mt-6 flex flex-wrap gap-3">
         <a
-          href="https://script.bloodontheclocktower.com/"
+          href={scriptToolUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="rounded-full bg-foreground px-5 py-2 text-sm font-medium text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc]"
@@ -96,9 +98,9 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
         </span>
       </div>
       <p className="mt-2 text-xs text-zinc-400 dark:text-zinc-600">
-        &quot;Open Script Tool&quot; goes to script.bloodontheclocktower.com —
-        use &quot;View raw JSON&quot; to import this script there until
-        one-click loading is wired up.
+        &quot;Open Script Tool&quot; pre-loads this script&apos;s characters
+        directly on script.bloodontheclocktower.com, the same way it works
+        from other script libraries.
       </p>
 
       <section className="mt-10">
