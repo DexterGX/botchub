@@ -61,24 +61,6 @@ export default async function Home() {
           script library built to stay reliably up, with game tracking and
           live play tools on the way. Free, no account needed to browse.
         </p>
-
-        <form
-          action="/scripts"
-          className="mx-auto mt-10 flex w-full max-w-md items-center gap-2"
-        >
-          <input
-            type="search"
-            name="q"
-            placeholder="Search scripts by name or author…"
-            className="w-full rounded-full border border-black/[.12] bg-white px-5 py-3 text-sm outline-none focus:border-zinc-400 dark:border-white/[.15] dark:bg-zinc-900"
-          />
-          <button
-            type="submit"
-            className="shrink-0 rounded-full bg-foreground px-5 py-3 text-sm font-medium text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc]"
-          >
-            Search
-          </button>
-        </form>
       </section>
 
       <section className="mx-auto grid w-full max-w-5xl gap-4 px-6 py-14 sm:grid-cols-2 lg:grid-cols-3">

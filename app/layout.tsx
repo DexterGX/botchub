@@ -1,7 +1,25 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
+import { ThemeToggle } from "./ThemeToggle";
 import "./globals.css";
+
+// Applied before hydration (see the beforeInteractive <Script> below) so
+// the visitor's chosen theme — or their OS preference, if they've never
+// touched the toggle — is in place for the very first paint. Without this,
+// switching globals.css from the prefers-color-scheme strategy to a class
+// strategy (needed so the toggle can override the OS setting) would cause
+// a flash of the wrong theme on every load.
+const THEME_INIT_SCRIPT = `
+(function () {
+  try {
+    var stored = localStorage.getItem("theme");
+    var isDark = stored ? stored === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    if (isDark) document.documentElement.classList.add("dark");
+  } catch (e) {}
+})();
+`;
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -37,6 +55,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         actually broken. See: https://react.dev/link/hydration-mismatch
       */}
       <body className="min-h-full flex flex-col bg-zinc-50 text-zinc-900 dark:bg-black dark:text-zinc-50" suppressHydrationWarning>
+        <Script
+          id="theme-init"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }}
+        />
         <header className="border-b border-black/[.08] dark:border-white/[.145]">
           <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-4">
             <Link href="/" className="text-lg font-semibold tracking-tight">
@@ -49,6 +72,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               <Link href="/characters" className="hover:text-foreground">
                 Characters
               </Link>
+              <ThemeToggle />
             </nav>
           </div>
         </header>

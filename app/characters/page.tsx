@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { searchCharacters } from "@/lib/queries";
 import {
@@ -109,19 +110,36 @@ export default async function CharactersPage({
                 {group.characters.map((c) => (
                   <li
                     key={c.id}
-                    className="rounded-2xl border border-black/[.08] p-4 dark:border-white/[.145]"
+                    className="flex items-start gap-3 rounded-2xl border border-black/[.08] p-4 dark:border-white/[.145]"
                   >
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="font-medium">{c.name}</span>
-                      <span className="shrink-0 text-xs text-zinc-400 dark:text-zinc-600">
-                        {c.is_homebrew ? "Homebrew" : editionLabel(c.edition)}
-                      </span>
+                    <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                      {c.icon_url ? (
+                        <Image
+                          src={c.icon_url}
+                          alt=""
+                          width={40}
+                          height={40}
+                          className="h-10 w-10 object-contain"
+                        />
+                      ) : (
+                        <span className="text-xs font-semibold text-zinc-400 dark:text-zinc-600">
+                          {c.name.slice(0, 1)}
+                        </span>
+                      )}
                     </div>
-                    {c.ability && (
-                      <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-                        {c.ability}
-                      </p>
-                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="font-medium">{c.name}</span>
+                        <span className="shrink-0 text-xs text-zinc-400 dark:text-zinc-600">
+                          {c.is_homebrew ? "Homebrew" : editionLabel(c.edition)}
+                        </span>
+                      </div>
+                      {c.ability && (
+                        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                          {c.ability}
+                        </p>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ul>

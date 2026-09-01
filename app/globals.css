@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+/*
+ * Switches Tailwind's `dark:` variant from the "prefers-color-scheme"
+ * media-query strategy to a ".dark" class on an ancestor (normally <html>).
+ * This is what lets the theme toggle in the header override the visitor's
+ * OS setting — a pure media-query strategy can't be overridden by a click.
+ * The "system default" behavior isn't lost: the inline script in
+ * app/layout.tsx applies this same .dark class before first paint, based
+ * on the OS preference, whenever the visitor hasn't picked a theme yet.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -12,11 +23,9 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
 }
 
 body {
