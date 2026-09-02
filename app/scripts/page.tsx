@@ -38,7 +38,7 @@ function toArray(value: string | string[] | undefined): string[] {
  * plain `<Link>`s. */
 function buildHref(
   params: ScriptsPageSearchParams,
-  overrides: Record<string, string | string[] | null>
+  overrides: Record<string, string | string[] | null>,
 ): string {
   const qs = new URLSearchParams();
   const merged: Record<string, string | string[] | undefined> = {
@@ -154,7 +154,13 @@ function EyeIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <circle cx="10" cy="10" r="2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle
+        cx="10"
+        cy="10"
+        r="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -186,7 +192,7 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
   })).filter((group) => group.characters.length > 0);
 
   const hasFilters = Boolean(
-    q || type || author || include.length > 0 || exclude.length > 0
+    q || type || author || include.length > 0 || exclude.length > 0,
   );
 
   return (
@@ -262,92 +268,167 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
           No scripts match. Try a different search or filter.
         </p>
       ) : (
-        <div className="mt-8 overflow-x-auto rounded-2xl border border-black/[.08] dark:border-white/[.145]">
-          <table className="w-full min-w-[720px] table-fixed text-left text-sm">
-            <colgroup>
-              <col className="w-[34%]" />
-              <col className="w-[20%]" />
-              <col className="w-[12%]" />
-              <col className="w-[10%]" />
-              <col className="w-[10%]" />
-              <col className="w-[14%]" />
-            </colgroup>
-            <thead>
-              <tr className="border-b border-black/[.08] text-xs uppercase tracking-wide text-zinc-500 dark:border-white/[.145] dark:text-zinc-500">
-                <th className="px-4 py-3 font-semibold">Name</th>
-                <th className="px-4 py-3 font-semibold">Author</th>
-                <th className="px-4 py-3 font-semibold">Type</th>
-                <th className="px-4 py-3 font-semibold">Likes</th>
-                <th className="px-4 py-3 font-semibold">Views</th>
-                <th className="px-4 py-3 font-semibold">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {scripts.map((script) => (
-                <tr
-                  key={script.id}
-                  className="border-b border-black/[.06] align-top last:border-0 hover:bg-black/[.02] dark:border-white/[.08] dark:hover:bg-white/[.03]"
-                >
-                  <td className="px-4 py-3">
-                    <Link
-                      href={`/scripts/${script.id}`}
-                      className="font-medium hover:underline"
-                    >
-                      {script.name}
-                    </Link>
-                    {script.description && (
-                      <div className="mt-0.5 overflow-hidden text-xs text-zinc-500 dark:text-zinc-500">
-                        {truncate(script.description, 70)}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
-                    {script.author ?? "—"}
-                  </td>
-                  <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
+        <>
+          {/* Card list — small screens only. A table forces sideways
+              scrolling to read anything past the name column, which is
+              painful on a phone, so below the `sm` breakpoint each script
+              gets a stacked card instead: name + type on one line, author +
+              likes/views on the next, actions along the bottom. */}
+          <div className="mt-8 space-y-3 sm:hidden">
+            {scripts.map((script) => (
+              <div
+                key={script.id}
+                className="rounded-2xl border border-black/[.08] p-4 dark:border-white/[.145]"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <Link
+                    href={`/scripts/${script.id}`}
+                    className="font-medium hover:underline"
+                  >
+                    {script.name}
+                  </Link>
+                  <span className="shrink-0 text-xs text-zinc-500 dark:text-zinc-400">
                     {SCRIPT_TYPE_LABELS[script.script_type]}
-                  </td>
-                  <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
+                  </span>
+                </div>
+
+                {script.description && (
+                  <div className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-500">
+                    {truncate(script.description, 90)}
+                  </div>
+                )}
+
+                <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+                  by {script.author ?? "—"}
+                </div>
+
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <span className="flex shrink-0 items-center gap-3 text-sm text-zinc-600 dark:text-zinc-400">
                     <span className="inline-flex items-center gap-1">
                       <HeartIcon />
                       {script.like_count}
                     </span>
-                  </td>
-                  <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
                     <span className="inline-flex items-center gap-1">
                       <EyeIcon />
                       {script.view_count}
                     </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <a
-                        href={`/api/scripts/${script.id}/json`}
-                        download={`${script.name}.json`}
-                        title="Download script JSON"
-                        className="rounded-lg border border-black/[.12] p-1.5 text-zinc-600 transition-colors hover:border-zinc-400 hover:text-zinc-900 dark:border-white/[.15] dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-50"
-                      >
-                        <DownloadIcon />
-                      </a>
-                      <span
-                        title="PDF export is coming in a future update"
-                        className="cursor-not-allowed rounded-lg border border-black/[.12] p-1.5 text-zinc-300 dark:border-white/[.15] dark:text-zinc-700"
-                      >
-                        <PdfIcon />
-                      </span>
-                      <span
-                        title="Editing needs sign-in — coming with script uploads"
-                        className="cursor-not-allowed rounded-lg border border-black/[.12] p-1.5 text-zinc-300 dark:border-white/[.15] dark:text-zinc-700"
-                      >
-                        <EditIcon />
-                      </span>
-                    </div>
-                  </td>
+                  </span>
+
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={`/api/scripts/${script.id}/json`}
+                      download={`${script.name}.json`}
+                      title="Download script JSON"
+                      className="rounded-lg border border-black/[.12] p-2 text-zinc-600 transition-colors hover:border-zinc-400 hover:text-zinc-900 dark:border-white/[.15] dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-50"
+                    >
+                      <DownloadIcon />
+                    </a>
+                    <span
+                      title="PDF export is coming in a future update"
+                      className="cursor-not-allowed rounded-lg border border-black/[.12] p-2 text-zinc-300 dark:border-white/[.15] dark:text-zinc-700"
+                    >
+                      <PdfIcon />
+                    </span>
+                    <span
+                      title="Editing needs sign-in — coming with script uploads"
+                      className="cursor-not-allowed rounded-lg border border-black/[.12] p-2 text-zinc-300 dark:border-white/[.15] dark:text-zinc-700"
+                    >
+                      <EditIcon />
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Table — sm and up. */}
+          <div className="mt-8 hidden overflow-x-auto rounded-2xl border border-black/[.08] dark:border-white/[.145] sm:block">
+            <table className="w-full min-w-[720px] table-fixed text-left text-sm">
+              <colgroup>
+                <col className="w-[34%]" />
+                <col className="w-[20%]" />
+                <col className="w-[12%]" />
+                <col className="w-[10%]" />
+                <col className="w-[10%]" />
+                <col className="w-[14%]" />
+              </colgroup>
+              <thead>
+                <tr className="border-b border-black/[.08] text-xs uppercase tracking-wide text-zinc-500 dark:border-white/[.145] dark:text-zinc-500">
+                  <th className="px-4 py-3 font-semibold">Name</th>
+                  <th className="px-4 py-3 font-semibold">Author</th>
+                  <th className="px-4 py-3 font-semibold">Type</th>
+                  <th className="px-4 py-3 font-semibold">Likes</th>
+                  <th className="px-4 py-3 font-semibold">Views</th>
+                  <th className="px-4 py-3 font-semibold">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {scripts.map((script) => (
+                  <tr
+                    key={script.id}
+                    className="border-b border-black/[.06] align-top last:border-0 hover:bg-black/[.02] dark:border-white/[.08] dark:hover:bg-white/[.03]"
+                  >
+                    <td className="px-4 py-3">
+                      <Link
+                        href={`/scripts/${script.id}`}
+                        className="font-medium hover:underline"
+                      >
+                        {script.name}
+                      </Link>
+                      {script.description && (
+                        <div className="mt-0.5 overflow-hidden text-xs text-zinc-500 dark:text-zinc-500">
+                          {truncate(script.description, 70)}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
+                      {script.author ?? "—"}
+                    </td>
+                    <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
+                      {SCRIPT_TYPE_LABELS[script.script_type]}
+                    </td>
+                    <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
+                      <span className="inline-flex items-center gap-1">
+                        <HeartIcon />
+                        {script.like_count}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
+                      <span className="inline-flex items-center gap-1">
+                        <EyeIcon />
+                        {script.view_count}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={`/api/scripts/${script.id}/json`}
+                          download={`${script.name}.json`}
+                          title="Download script JSON"
+                          className="rounded-lg border border-black/[.12] p-1.5 text-zinc-600 transition-colors hover:border-zinc-400 hover:text-zinc-900 dark:border-white/[.15] dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-50"
+                        >
+                          <DownloadIcon />
+                        </a>
+                        <span
+                          title="PDF export is coming in a future update"
+                          className="cursor-not-allowed rounded-lg border border-black/[.12] p-1.5 text-zinc-300 dark:border-white/[.15] dark:text-zinc-700"
+                        >
+                          <PdfIcon />
+                        </span>
+                        <span
+                          title="Editing needs sign-in — coming with script uploads"
+                          className="cursor-not-allowed rounded-lg border border-black/[.12] p-1.5 text-zinc-300 dark:border-white/[.15] dark:text-zinc-700"
+                        >
+                          <EditIcon />
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {totalPages > 1 && (
