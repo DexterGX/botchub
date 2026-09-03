@@ -100,7 +100,7 @@ export function isMetaEntry(entry: ScriptJsonEntry): entry is ScriptJsonMeta {
 }
 
 export function isCharacterObjectEntry(
-  entry: ScriptJsonEntry
+  entry: ScriptJsonEntry,
 ): entry is ScriptJsonCharacter {
   return typeof entry === "object" && entry.id !== "_meta";
 }
@@ -119,7 +119,7 @@ const EDITION_LABELS: Record<NonNullable<Edition>, string> = {
 };
 
 export function editionLabel(edition: Edition): string {
-  return edition ? EDITION_LABELS[edition] ?? edition : "Custom";
+  return edition ? (EDITION_LABELS[edition] ?? edition) : "Custom";
 }
 
 export const TEAM_ORDER: Team[] = [

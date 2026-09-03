@@ -27,14 +27,16 @@ const QUICK_ACTIONS = [
   {
     href: "/games",
     title: "Track your games",
-    description: "Log wins and losses and build your player stats. Coming soon.",
+    description:
+      "Log wins and losses and build your player stats. Coming soon.",
     icon: "🎲",
     disabled: true,
   },
   {
     href: "/grimoire",
     title: "Online grimoire",
-    description: "Run a game live with a shared, real-time grimoire. Coming soon.",
+    description:
+      "Run a game live with a shared, real-time grimoire. Coming soon.",
     icon: "🕯️",
     disabled: true,
   },
@@ -57,9 +59,9 @@ export default async function Home() {
           A better home for Blood on the Clocktower
         </h1>
         <p className="mx-auto mt-6 max-w-xl text-lg text-zinc-600 dark:text-zinc-400">
-          botchub is a community-run hub for the game — starting with a
-          script library built to stay reliably up, with game tracking and
-          live play tools on the way. Free, no account needed to browse.
+          botchub is a community-run hub for the game — starting with a script
+          library built to stay reliably up, with game tracking and live play
+          tools on the way. Free, no account needed to browse.
         </p>
       </section>
 

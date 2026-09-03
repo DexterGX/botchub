@@ -29,7 +29,7 @@ export function CharacterFilterDropdown({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Set<string>>(
-    () => new Set(initialSelected)
+    () => new Set(initialSelected),
   );
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -68,8 +68,8 @@ export function CharacterFilterDropdown({
   const normalizedQuery = query.trim().toLowerCase();
   const hasAnyMatch = charactersByTeam.some((group) =>
     group.characters.some((c) =>
-      c.name.toLowerCase().includes(normalizedQuery)
-    )
+      c.name.toLowerCase().includes(normalizedQuery),
+    ),
   );
 
   return (

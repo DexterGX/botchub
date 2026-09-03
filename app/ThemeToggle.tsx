@@ -39,7 +39,11 @@ function getServerSnapshot() {
  * current theme.
  */
 export function ThemeToggle() {
-  const isDark = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const isDark = useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    getServerSnapshot,
+  );
 
   function toggle() {
     const next = !isDark;

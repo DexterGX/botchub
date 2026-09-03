@@ -3,6 +3,7 @@ import Link from "next/link";
 import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ThemeToggle } from "./ThemeToggle";
+import { createClient } from "@/lib/supabase/server";
 import "./globals.css";
 
 // Applied before hydration (see the beforeInteractive <Script> below) so
@@ -37,7 +38,12 @@ export const metadata: Metadata = {
     "A community site for Blood on the Clocktower custom scripts, characters, and stats.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   return (
     <html
       lang="en"
@@ -54,7 +60,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         trips React's hydration-mismatch warning even though nothing is
         actually broken. See: https://react.dev/link/hydration-mismatch
       */}
-      <body className="min-h-full flex flex-col bg-zinc-50 text-zinc-900 dark:bg-black dark:text-zinc-50" suppressHydrationWarning>
+      <body
+        className="min-h-full flex flex-col bg-zinc-50 text-zinc-900 dark:bg-black dark:text-zinc-50"
+        suppressHydrationWarning
+      >
         <Script
           id="theme-init"
           strategy="beforeInteractive"
@@ -65,13 +74,22 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <Link href="/" className="text-lg font-semibold tracking-tight">
               botchub
             </Link>
-            <nav className="flex items-center gap-6 text-sm font-medium text-zinc-600 dark:text-zinc-400">
+            <nav className="flex items-center gap-4 text-sm font-medium text-zinc-600 dark:text-zinc-400 sm:gap-6">
               <Link href="/scripts" className="hover:text-foreground">
                 Scripts
               </Link>
               <Link href="/characters" className="hover:text-foreground">
                 Characters
               </Link>
+              {user ? (
+                <Link href="/account" className="hover:text-foreground">
+                  Account
+                </Link>
+              ) : (
+                <Link href="/login" className="hover:text-foreground">
+                  Log in
+                </Link>
+              )}
               <ThemeToggle />
             </nav>
           </div>
@@ -82,8 +100,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <footer className="border-t border-black/[.08] dark:border-white/[.145]">
           <div className="mx-auto w-full max-w-5xl px-6 py-6 text-center text-xs text-zinc-500 dark:text-zinc-400">
             botchub is an unofficial, fan-made community project and is not
-            affiliated with or endorsed by The Pandemonium Institute.
-            Blood on the Clocktower is a trademark of The Pandemonium Institute.
+            affiliated with or endorsed by The Pandemonium Institute. Blood on
+            the Clocktower is a trademark of The Pandemonium Institute.
           </div>
         </footer>
       </body>
