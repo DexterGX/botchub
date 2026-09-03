@@ -30,8 +30,7 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
 
   const characters = await getCharactersForScript(id);
   const meta = script.script_json.find(isMetaEntry) as
-    | ScriptJsonMeta
-    | undefined;
+    ScriptJsonMeta | undefined;
   const author = meta?.author;
 
   const byTeam = TEAM_ORDER.map((team) => ({
@@ -99,8 +98,8 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
       </div>
       <p className="mt-2 text-xs text-zinc-400 dark:text-zinc-600">
         &quot;Open Script Tool&quot; pre-loads this script&apos;s characters
-        directly on script.bloodontheclocktower.com, the same way it works
-        from other script libraries.
+        directly on script.bloodontheclocktower.com, the same way it works from
+        other script libraries.
       </p>
 
       <section className="mt-10">
@@ -183,8 +182,8 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
           </div>
         ) : (
           <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-            This script doesn&apos;t override the night order — each
-            character wakes in their standard position.
+            This script doesn&apos;t override the night order — each character
+            wakes in their standard position.
           </p>
         )}
       </section>

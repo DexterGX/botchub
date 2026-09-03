@@ -13,7 +13,7 @@ const CORS_HEADERS = {
 
 export async function GET(
   _request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
   const supabase = await createClient();
@@ -27,14 +27,14 @@ export async function GET(
   if (error) {
     return NextResponse.json(
       { error: "Failed to load script." },
-      { status: 500, headers: CORS_HEADERS }
+      { status: 500, headers: CORS_HEADERS },
     );
   }
 
   if (!data) {
     return NextResponse.json(
       { error: "Script not found." },
-      { status: 404, headers: CORS_HEADERS }
+      { status: 404, headers: CORS_HEADERS },
     );
   }
 

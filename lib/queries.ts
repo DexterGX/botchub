@@ -108,7 +108,7 @@ export async function incrementScriptViewCount(id: string): Promise<void> {
 }
 
 export async function getCharactersForScript(
-  scriptId: string
+  scriptId: string,
 ): Promise<Character[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -120,7 +120,9 @@ export async function getCharactersForScript(
   // Same untyped-embed caveat as searchScripts above: this is a
   // many-to-one relation, not an array, despite how it's inferred.
   const rows = (data ?? []) as unknown as { character: Character | null }[];
-  return rows.map((row) => row.character).filter((c): c is Character => Boolean(c));
+  return rows
+    .map((row) => row.character)
+    .filter((c): c is Character => Boolean(c));
 }
 
 /** Official characters only, grouped for a filter dropdown — cheap enough to
