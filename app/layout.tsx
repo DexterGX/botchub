@@ -3,6 +3,7 @@ import Link from "next/link";
 import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ThemeToggle } from "./ThemeToggle";
+import { MobileNav } from "./MobileNav";
 import { createClient } from "@/lib/supabase/server";
 import "./globals.css";
 
@@ -74,7 +75,14 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             <Link href="/" className="text-lg font-semibold tracking-tight">
               botchub
             </Link>
-            <nav className="flex items-center gap-4 text-sm font-medium text-zinc-600 dark:text-zinc-400 sm:gap-6">
+
+            {/* >=sm: the full inline link row, unchanged. Below sm there
+                isn't room for "botchub" plus every link on one line (that
+                crowding — "botchubScripts Characters Account" running
+                together with no space to wrap — was the actual bug), so a
+                hamburger replaces the links there instead of letting them
+                wrap or shrink to illegibility. */}
+            <nav className="hidden items-center gap-4 text-sm font-medium text-zinc-600 dark:text-zinc-400 sm:flex sm:gap-6">
               <Link href="/scripts" className="hover:text-foreground">
                 Scripts
               </Link>
@@ -92,6 +100,11 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               )}
               <ThemeToggle />
             </nav>
+
+            <div className="flex items-center gap-2 sm:hidden">
+              <ThemeToggle />
+              <MobileNav loggedIn={!!user} />
+            </div>
           </div>
         </header>
 
