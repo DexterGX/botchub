@@ -10,23 +10,28 @@ const inputClasses =
 
 interface ProfileDetailsFormProps {
   defaultFullName: string;
+  defaultBirthday: string;
   defaultCountry: string;
   defaultRegion: string;
 }
 
 export function ProfileDetailsForm({
   defaultFullName,
+  defaultBirthday,
   defaultCountry,
   defaultRegion,
 }: ProfileDetailsFormProps) {
   const [state, formAction, isPending] = useActionState(
     updateProfileDetailsAction,
-    INITIAL_PROFILE_STATE
+    INITIAL_PROFILE_STATE,
   );
   const [country, setCountry] = useState(defaultCountry);
 
   return (
-    <form action={formAction} className="mt-8 space-y-4 border-t border-black/[.08] pt-6 dark:border-white/[.145]">
+    <form
+      action={formAction}
+      className="mt-8 space-y-4 border-t border-black/[.08] pt-6 dark:border-white/[.145]"
+    >
       <div>
         <label htmlFor="fullName" className="block text-sm font-medium">
           Name{" "}
@@ -44,6 +49,25 @@ export function ProfileDetailsForm({
         />
         <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
           Never shown publicly.
+        </p>
+      </div>
+
+      <div>
+        <label htmlFor="birthday" className="block text-sm font-medium">
+          Birthday{" "}
+          <span className="font-normal text-zinc-500 dark:text-zinc-400">
+            (optional, private)
+          </span>
+        </label>
+        <input
+          id="birthday"
+          name="birthday"
+          type="date"
+          defaultValue={defaultBirthday}
+          className={inputClasses}
+        />
+        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+          Never shown publicly — just so we can celebrate with you someday.
         </p>
       </div>
 

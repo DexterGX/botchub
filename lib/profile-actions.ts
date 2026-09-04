@@ -19,7 +19,7 @@ function friendlyError(message: string): string {
  */
 export async function completeOnboardingAction(
   _prevState: ProfileActionState,
-  formData: FormData
+  formData: FormData,
 ): Promise<ProfileActionState> {
   const displayName = String(formData.get("displayName") ?? "").trim();
   const fullName = String(formData.get("fullName") ?? "").trim();
@@ -79,7 +79,7 @@ export async function completeOnboardingAction(
  */
 export async function setDisplayNameAction(
   _prevState: ProfileActionState,
-  formData: FormData
+  formData: FormData,
 ): Promise<ProfileActionState> {
   const displayName = String(formData.get("displayName") ?? "").trim();
 
@@ -106,13 +106,14 @@ export async function setDisplayNameAction(
   redirect("/account");
 }
 
-/** Account-page edit for the optional fields: real name (private table),
- * country + region (public profiles table). */
+/** Account-page edit for the optional fields: real name + birthday (private
+ * table), country + region (public profiles table). */
 export async function updateProfileDetailsAction(
   _prevState: ProfileActionState,
-  formData: FormData
+  formData: FormData,
 ): Promise<ProfileActionState> {
   const fullName = String(formData.get("fullName") ?? "").trim();
+  const birthday = String(formData.get("birthday") ?? "").trim();
   const country = String(formData.get("country") ?? "").trim();
   const region = String(formData.get("region") ?? "").trim();
 
@@ -136,11 +137,60 @@ export async function updateProfileDetailsAction(
   const { error: privateError } = await supabase
     .from("profile_private")
     .upsert(
-      { id: user.id, full_name: fullName || null },
-      { onConflict: "id" }
+      { id: user.id, full_name: fullName || null, birthday: birthday || null },
+      { onConflict: "id" },
     );
   if (privateError) {
     return { error: friendlyError(privateError.message) };
+  }
+
+  revalidatePath("/", "layout");
+  redirect("/account");
+}
+
+/**
+ * Sets (or clears, when characterId is empty) the token art the user has
+ * chosen as their avatar. avatar_character_id has no database foreign key
+ * (see the migration's comment — the natural reference target only has a
+ * partial unique index), so this is the one place standing between a
+ * visitor and writing an arbitrary string into that column: look the id up
+ * against the real, official character list before saving anything.
+ */
+export async function setAvatarAction(
+  _prevState: ProfileActionState,
+  formData: FormData,
+): Promise<ProfileActionState> {
+  const characterId = String(formData.get("characterId") ?? "").trim();
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: "You need to be logged in." };
+  }
+
+  if (characterId) {
+    const { data: character, error: lookupError } = await supabase
+      .from("characters")
+      .select("character_id")
+      .eq("character_id", characterId)
+      .eq("is_homebrew", false)
+      .maybeSingle();
+    if (lookupError) {
+      return { error: friendlyError(lookupError.message) };
+    }
+    if (!character) {
+      return { error: "That token isn't a recognized character." };
+    }
+  }
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ avatar_character_id: characterId || null })
+    .eq("id", user.id);
+  if (error) {
+    return { error: friendlyError(error.message) };
   }
 
   revalidatePath("/", "layout");
