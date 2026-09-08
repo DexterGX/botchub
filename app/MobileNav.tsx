@@ -2,9 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { signOutAction } from "@/lib/auth-actions";
 
 const linkClasses =
   "block rounded-lg px-3 py-2 text-sm font-medium text-zinc-600 hover:bg-black/[.04] dark:text-zinc-400 dark:hover:bg-white/[.06]";
+
+const logoutButtonClasses =
+  "block w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-zinc-600 hover:bg-black/[.04] dark:text-zinc-400 dark:hover:bg-white/[.06]";
 
 /**
  * The header nav's hamburger menu, shown below the `sm` breakpoint in
@@ -18,6 +22,11 @@ const linkClasses =
  * the edge of any phone screen the way a multi-column icon grid could, so
  * the anchored-dropdown clipping problem that motivated the modal there
  * doesn't apply here.
+ *
+ * Signed-in visitors also get a "Log out" entry below a divider — the
+ * desktop header has never had one either (sign-out has only ever lived on
+ * /account), but on mobile the hamburger is the one place a signed-in
+ * visitor can always reach, so it's the natural spot for it.
  */
 export function MobileNav({ loggedIn }: { loggedIn: boolean }) {
   const [open, setOpen] = useState(false);
@@ -89,6 +98,17 @@ export function MobileNav({ loggedIn }: { loggedIn: boolean }) {
             >
               Log in
             </Link>
+          )}
+
+          {loggedIn && (
+            <>
+              <div className="my-1 border-t border-black/[.08] dark:border-white/[.1]" />
+              <form action={signOutAction}>
+                <button type="submit" className={logoutButtonClasses}>
+                  Log out
+                </button>
+              </form>
+            </>
           )}
         </nav>
       )}

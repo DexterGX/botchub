@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { signOutAction } from "@/lib/auth-actions";
 import { OnboardingForm } from "./OnboardingForm";
 
 export const metadata = {
@@ -43,6 +44,25 @@ export default async function OnboardingPage() {
         defaultCountry={profile?.country ?? ""}
         defaultRegion={profile?.region ?? ""}
       />
+
+      {/* This step is required — the rest of the site is gated behind it
+          (see isOnboardingExempt() in lib/supabase/middleware.ts) — but
+          someone who signed in with the wrong Google account, or just
+          doesn't want to make a botchub account under this email, had no
+          way out of it before this: /account (where "Log out" normally
+          lives) is itself gated on onboarding being finished. This gives
+          them an escape hatch right here instead of trapping them. */}
+      <div className="mt-6 text-center text-xs text-zinc-500 dark:text-zinc-400">
+        Signed in as {user.email}.{" "}
+        <form action={signOutAction} className="inline">
+          <button
+            type="submit"
+            className="underline hover:text-zinc-700 dark:hover:text-zinc-300"
+          >
+            Not you? Log out
+          </button>
+        </form>
+      </div>
     </main>
   );
 }
