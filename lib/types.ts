@@ -71,6 +71,14 @@ export interface Character {
   source_script_id: string | null;
   icon_url: string | null;
   created_at: string;
+  /** Official wake-order position on the first night (0 = known not to
+   * wake; null = no data yet — see lib/nightOrder.ts for how these two
+   * are treated differently). */
+  first_night: number | null;
+  first_night_reminder: string | null;
+  /** Same as first_night, for every night after the first. */
+  other_night: number | null;
+  other_night_reminder: string | null;
 }
 
 // One entry in a script's script_json array: either a bare official
