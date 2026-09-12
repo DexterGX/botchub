@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -6,6 +7,7 @@ import {
   getScriptById,
   incrementScriptViewCount,
 } from "@/lib/queries";
+import { buildNightOrder, type NightOrderEntry } from "@/lib/nightOrder";
 import { buildScriptToolUrl } from "@/lib/scriptTool";
 import {
   TEAM_LABELS,
@@ -17,6 +19,22 @@ import {
 
 interface ScriptPageProps {
   params: Promise<{ id: string }>;
+}
+
+// Every other page has its own descriptive title (see the metadata export
+// on the sibling pages) — this one used to inherit the root layout's
+// generic default instead, so every script's browser tab read the same
+// "BOTChub — Blood on the Clocktower scripts" no matter which script you
+// were looking at. A missing script here isn't treated as an error — the
+// page component's own notFound() call handles that and Next.js renders
+// its own not-found title in that case.
+export async function generateMetadata({
+  params,
+}: ScriptPageProps): Promise<Metadata> {
+  const { id } = await params;
+  const script = await getScriptById(id);
+  if (!script) return {};
+  return { title: `${script.name} — BOTChub` };
 }
 
 export default async function ScriptDetailPage({ params }: ScriptPageProps) {
@@ -38,8 +56,7 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
     characters: characters.filter((c) => c.team === team),
   })).filter((group) => group.characters.length > 0);
 
-  const hasCustomNightOrder =
-    Array.isArray(meta?.firstNight) || Array.isArray(meta?.otherNight);
+  const { firstNight, otherNight, missingData } = buildNightOrder(characters);
 
   const jsonUrl = `/api/scripts/${script.id}/json`;
   const scriptToolUrl = buildScriptToolUrl(script.script_json);
@@ -83,18 +100,18 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
         </a>
         <a
           href={jsonUrl}
-          target="_blank"
-          rel="noopener noreferrer"
+          download={`${script.name}.json`}
           className="rounded-full border border-black/[.12] px-5 py-2 text-sm font-medium transition-colors hover:border-zinc-400 dark:border-white/[.15] dark:hover:border-zinc-600"
         >
-          View raw JSON
+          Download JSON
         </a>
-        <span
-          title="PDF export is coming in a future update"
-          className="cursor-not-allowed rounded-full border border-black/[.12] px-5 py-2 text-sm font-medium text-zinc-400 dark:border-white/[.15] dark:text-zinc-600"
+        <a
+          href={`/api/scripts/${script.id}/pdf`}
+          download={`${script.name}.pdf`}
+          className="rounded-full border border-black/[.12] px-5 py-2 text-sm font-medium transition-colors hover:border-zinc-400 dark:border-white/[.15] dark:hover:border-zinc-600"
         >
-          Download PDF (soon)
-        </span>
+          Download PDF
+        </a>
       </div>
       <p className="mt-2 text-xs text-zinc-400 dark:text-zinc-600">
         &quot;Open Script Tool&quot; pre-loads this script&apos;s characters
@@ -153,40 +170,87 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
 
       <section className="mt-10">
         <h2 className="text-lg font-semibold">Night order</h2>
-        {hasCustomNightOrder ? (
-          <div className="mt-4 grid gap-6 sm:grid-cols-2">
-            {Array.isArray(meta?.firstNight) && (
-              <div>
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-500">
-                  First night
-                </h3>
-                <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-zinc-700 dark:text-zinc-300">
-                  {(meta!.firstNight as string[]).map((step, i) => (
-                    <li key={`${step}-${i}`}>{step}</li>
-                  ))}
-                </ol>
-              </div>
-            )}
-            {Array.isArray(meta?.otherNight) && (
-              <div>
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-500">
-                  Other nights
-                </h3>
-                <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-zinc-700 dark:text-zinc-300">
-                  {(meta!.otherNight as string[]).map((step, i) => (
-                    <li key={`${step}-${i}`}>{step}</li>
-                  ))}
-                </ol>
-              </div>
-            )}
-          </div>
-        ) : (
+        {firstNight.length === 0 && otherNight.length === 0 ? (
           <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-            This script doesn&apos;t override the night order — each character
-            wakes in their standard position.
+            No character on this script has night-order data yet.
+          </p>
+        ) : (
+          <div className="mt-4 grid gap-8 sm:grid-cols-2">
+            <NightOrderList title="First night" entries={firstNight} />
+            <NightOrderList title="Other nights" entries={otherNight} />
+          </div>
+        )}
+        {missingData.length > 0 && (
+          <p className="mt-4 text-xs text-zinc-500 dark:text-zinc-500">
+            {missingData.length === 1
+              ? `${missingData[0].name} doesn't`
+              : `${missingData.map((c) => c.name).join(", ")} don't`}{" "}
+            have night-order data in BOTChub yet — check the printed script
+            or Script Tool for exact placement.
           </p>
         )}
       </section>
     </main>
+  );
+}
+
+function NightOrderList({
+  title,
+  entries,
+}: {
+  title: string;
+  entries: NightOrderEntry[];
+}) {
+  if (entries.length === 0) {
+    return (
+      <div>
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-500">
+          {title}
+        </h3>
+        <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-500">
+          No characters on this script act on {title.toLowerCase()}.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-500">
+        {title}
+      </h3>
+      <ol className="mt-2 space-y-3">
+        {entries.map((entry, i) => (
+          <li key={entry.key} className="flex items-start gap-3">
+            <span className="mt-0.5 w-4 shrink-0 text-right text-xs tabular-nums text-zinc-400 dark:text-zinc-600">
+              {i + 1}
+            </span>
+            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+              {entry.iconUrl ? (
+                <Image
+                  src={entry.iconUrl}
+                  alt=""
+                  width={28}
+                  height={28}
+                  className="h-7 w-7 object-contain"
+                />
+              ) : (
+                <span className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-600">
+                  {entry.name.slice(0, 1)}
+                </span>
+              )}
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-medium">{entry.name}</div>
+              {entry.reminder && (
+                <p className="mt-0.5 text-sm text-zinc-600 dark:text-zinc-400">
+                  {entry.reminder}
+                </p>
+              )}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }

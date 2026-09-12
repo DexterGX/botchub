@@ -34,7 +34,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "botchub — Blood on the Clocktower scripts",
+  title: "BOTChub — Blood on the Clocktower scripts",
   description:
     "A community site for Blood on the Clocktower custom scripts, characters, and stats.",
 };
@@ -73,7 +73,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <header className="border-b border-black/[.08] dark:border-white/[.145]">
           <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-4">
             <Link href="/" className="text-lg font-semibold tracking-tight">
-              botchub
+              BOTChub
             </Link>
 
             {/* >=sm: the full inline link row, unchanged. Below sm there
@@ -112,7 +112,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
 
         <footer className="border-t border-black/[.08] dark:border-white/[.145]">
           <div className="mx-auto w-full max-w-5xl px-6 py-6 text-center text-xs text-zinc-500 dark:text-zinc-400">
-            botchub is an unofficial, fan-made community project and is not
+            BOTChub is an unofficial, fan-made community project and is not
             affiliated with or endorsed by The Pandemonium Institute. Blood on
             the Clocktower is a trademark of The Pandemonium Institute.
           </div>

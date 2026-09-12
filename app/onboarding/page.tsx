@@ -4,7 +4,7 @@ import { signOutAction } from "@/lib/auth-actions";
 import { OnboardingForm } from "./OnboardingForm";
 
 export const metadata = {
-  title: "Set up your profile — botchub",
+  title: "Set up your profile — BOTChub",
 };
 
 export default async function OnboardingPage() {
@@ -36,7 +36,7 @@ export default async function OnboardingPage() {
         Set up your profile
       </h1>
       <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-        Pick a display name to finish creating your botchub account.
+        Pick a display name to finish creating your BOTChub account.
       </p>
 
       <OnboardingForm

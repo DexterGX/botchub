@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ResetPasswordForm } from "./ResetPasswordForm";
 
 export const metadata = {
-  title: "Set a new password — botchub",
+  title: "Set a new password — BOTChub",
 };
 
 export default async function ResetPasswordPage() {
