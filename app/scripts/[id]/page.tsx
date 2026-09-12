@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -18,6 +19,22 @@ import {
 
 interface ScriptPageProps {
   params: Promise<{ id: string }>;
+}
+
+// Every other page has its own descriptive title (see the metadata export
+// on the sibling pages) — this one used to inherit the root layout's
+// generic default instead, so every script's browser tab read the same
+// "BOTChub — Blood on the Clocktower scripts" no matter which script you
+// were looking at. A missing script here isn't treated as an error — the
+// page component's own notFound() call handles that and Next.js renders
+// its own not-found title in that case.
+export async function generateMetadata({
+  params,
+}: ScriptPageProps): Promise<Metadata> {
+  const { id } = await params;
+  const script = await getScriptById(id);
+  if (!script) return {};
+  return { title: `${script.name} — BOTChub` };
 }
 
 export default async function ScriptDetailPage({ params }: ScriptPageProps) {
@@ -88,12 +105,13 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
         >
           Download JSON
         </a>
-        <span
-          title="PDF export is coming in a future update"
-          className="cursor-not-allowed rounded-full border border-black/[.12] px-5 py-2 text-sm font-medium text-zinc-400 dark:border-white/[.15] dark:text-zinc-600"
+        <a
+          href={`/api/scripts/${script.id}/pdf`}
+          download={`${script.name}.pdf`}
+          className="rounded-full border border-black/[.12] px-5 py-2 text-sm font-medium transition-colors hover:border-zinc-400 dark:border-white/[.15] dark:hover:border-zinc-600"
         >
-          Download PDF (soon)
-        </span>
+          Download PDF
+        </a>
       </div>
       <p className="mt-2 text-xs text-zinc-400 dark:text-zinc-600">
         &quot;Open Script Tool&quot; pre-loads this script&apos;s characters
@@ -167,7 +185,7 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
             {missingData.length === 1
               ? `${missingData[0].name} doesn't`
               : `${missingData.map((c) => c.name).join(", ")} don't`}{" "}
-            have night-order data in botchub yet — check the printed script
+            have night-order data in BOTChub yet — check the printed script
             or Script Tool for exact placement.
           </p>
         )}

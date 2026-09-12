@@ -9,7 +9,7 @@ import {
 import { CharacterFilterDropdown } from "./CharacterFilterDropdown";
 
 export const metadata = {
-  title: "Browse scripts — botchub",
+  title: "Browse scripts — BOTChub",
 };
 
 interface ScriptsPageSearchParams {
@@ -323,12 +323,14 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
                     >
                       <DownloadIcon />
                     </a>
-                    <span
-                      title="PDF export is coming in a future update"
-                      className="cursor-not-allowed rounded-lg border border-black/[.12] p-2 text-zinc-300 dark:border-white/[.15] dark:text-zinc-700"
+                    <a
+                      href={`/api/scripts/${script.id}/pdf`}
+                      download={`${script.name}.pdf`}
+                      title="Download script PDF"
+                      className="rounded-lg border border-black/[.12] p-2 text-zinc-600 transition-colors hover:border-zinc-400 hover:text-zinc-900 dark:border-white/[.15] dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-50"
                     >
                       <PdfIcon />
-                    </span>
+                    </a>
                     <span
                       title="Editing needs sign-in — coming with script uploads"
                       className="cursor-not-allowed rounded-lg border border-black/[.12] p-2 text-zinc-300 dark:border-white/[.15] dark:text-zinc-700"
@@ -409,12 +411,14 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
                         >
                           <DownloadIcon />
                         </a>
-                        <span
-                          title="PDF export is coming in a future update"
-                          className="cursor-not-allowed rounded-lg border border-black/[.12] p-1.5 text-zinc-300 dark:border-white/[.15] dark:text-zinc-700"
+                        <a
+                          href={`/api/scripts/${script.id}/pdf`}
+                          download={`${script.name}.pdf`}
+                          title="Download script PDF"
+                          className="rounded-lg border border-black/[.12] p-1.5 text-zinc-600 transition-colors hover:border-zinc-400 hover:text-zinc-900 dark:border-white/[.15] dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-50"
                         >
                           <PdfIcon />
-                        </span>
+                        </a>
                         <span
                           title="Editing needs sign-in — coming with script uploads"
                           className="cursor-not-allowed rounded-lg border border-black/[.12] p-1.5 text-zinc-300 dark:border-white/[.15] dark:text-zinc-700"

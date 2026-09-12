@@ -10,7 +10,7 @@ import {
 } from "@/lib/types";
 
 export const metadata = {
-  title: "Character reference — botchub",
+  title: "Character reference — BOTChub",
 };
 
 const EDITION_OPTIONS: { value: string; label: string }[] = [

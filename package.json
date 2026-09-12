@@ -9,14 +9,17 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@react-pdf/renderer": "^4.9.0",
+    "@supabase/server": "^1.4.1",
+    "@supabase/ssr": "^0.12.5",
+    "@supabase/supabase-js": "^2.112.4",
     "next": "16.3.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "@supabase/supabase-js": "^2.112.4",
-    "@supabase/ssr": "^0.12.5",
-    "@supabase/server": "^1.4.1"
+    "sharp": "^0.35.4"
   },
   "devDependencies": {
+    "@react-pdf/types": "^2.14.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

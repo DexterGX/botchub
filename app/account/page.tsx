@@ -12,7 +12,7 @@ import { AccountDesktopShell } from "./AccountDesktopShell";
 import { StatsOverview } from "./StatsOverview";
 
 export const metadata = {
-  title: "Account — botchub",
+  title: "Account — BOTChub",
 };
 
 export default async function AccountPage() {
@@ -75,7 +75,7 @@ export default async function AccountPage() {
       </span>
     </>
   ) : (
-    "botchub member"
+    "BOTChub member"
   );
 
   // A plain function, not a component: it's called directly (renderAvatar(80))

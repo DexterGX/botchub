@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 export const metadata = {
-  title: "Check your email — botchub",
+  title: "Check your email — BOTChub",
 };
 
 export default function ForgotPasswordCheckEmailPage() {
@@ -12,7 +12,7 @@ export default function ForgotPasswordCheckEmailPage() {
         Check your email
       </h1>
       <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-        If that address has a botchub account, we&apos;ve sent a link to reset
+        If that address has a BOTChub account, we&apos;ve sent a link to reset
         its password.
       </p>
       <Link

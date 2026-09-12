@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 export const metadata = {
-  title: "Check your email — botchub",
+  title: "Check your email — BOTChub",
 };
 
 export default function SignupCheckEmailPage() {
@@ -19,7 +19,7 @@ export default function SignupCheckEmailPage() {
         href="/"
         className="mt-8 rounded-full border border-black/[.12] px-5 py-2 text-sm font-medium transition-colors hover:border-zinc-400 dark:border-white/[.15] dark:hover:border-zinc-600"
       >
-        Back to botchub
+        Back to BOTChub
       </Link>
     </main>
   );
