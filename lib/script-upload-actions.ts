@@ -75,6 +75,7 @@ export async function uploadScriptAction(
     return { error: validated.error };
   }
   const { meta, characters, raw } = validated.value;
+  const bootleggerRules = meta.bootleggerRules ?? null;
 
   // Resolve every referenced id against the official character library in
   // one query, so we know which entries need a brand-new homebrew
@@ -130,6 +131,7 @@ export async function uploadScriptAction(
       edition: null,
       script_type: scriptType,
       author,
+      bootlegger_rules: bootleggerRules,
     })
     .select("id")
     .single();

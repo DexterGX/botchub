@@ -23,6 +23,13 @@ export interface Script {
    * of the Characters section on the script detail page. Distinct from
    * `description` (a short blurb near the title). */
   notes: string | null;
+  /** A script's own custom homebrew/house-rule text, from its uploaded
+   * JSON's `_meta.bootlegger` array (official script-schema.json field,
+   * max 10 entries) — distinct from the Bootlegger character's fixed
+   * ability text, which just points here. Null for a script that never
+   * had any (most scripts; Bootlegger isn't required to carry rule text
+   * even when the character itself is on the script). */
+  bootlegger_rules: string[] | null;
   script_json: ScriptJsonEntry[];
   edition: Edition;
   script_type: ScriptType;

@@ -65,11 +65,19 @@ export interface NightOrderResult {
 }
 
 export function buildNightOrder(characters: Character[]): NightOrderResult {
-  const firstNightChars = characters
+  // Traveller is an optional add-on team, not one of the core assigned
+  // roles this run sheet is for — even a Traveller with first/other-night
+  // data (some do wake) is deliberately left out here, per Diego's ask
+  // not to mix them into the standard wake order. `missingData` below is
+  // computed off this same filtered list, so a Traveller with no
+  // night-order data doesn't get flagged as missing it either.
+  const eligible = characters.filter((c) => c.team !== "traveller");
+
+  const firstNightChars = eligible
     .filter((c) => (c.first_night ?? 0) > 0)
     .sort((a, b) => (a.first_night ?? 0) - (b.first_night ?? 0));
 
-  const otherNightChars = characters
+  const otherNightChars = eligible
     .filter((c) => (c.other_night ?? 0) > 0)
     .sort((a, b) => (a.other_night ?? 0) - (b.other_night ?? 0));
 
@@ -99,8 +107,9 @@ export function buildNightOrder(characters: Character[]): NightOrderResult {
 
   // A character is "missing data" for this purpose only if we have no
   // signal either way (both fields null) — a character that's genuinely
-  // known not to wake at night (0/0) isn't missing anything.
-  const missingData = characters.filter(
+  // known not to wake at night (0/0) isn't missing anything. Travellers
+  // are excluded here too, same as above.
+  const missingData = eligible.filter(
     (c) => c.first_night === null && c.other_night === null,
   );
 

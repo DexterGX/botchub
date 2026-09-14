@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { getCharactersForScript, getScriptById } from "@/lib/queries";
+import {
+  getCharactersForScript,
+  getJinxesForCharacterIds,
+  getScriptById,
+} from "@/lib/queries";
 import { renderScriptPdf } from "@/lib/scriptPdf";
 import { isMetaEntry, type ScriptJsonMeta } from "@/lib/types";
 
@@ -18,6 +22,7 @@ export async function GET(
   }
 
   const characters = await getCharactersForScript(id);
+  const globalJinxes = await getJinxesForCharacterIds(characters.map((c) => c.id));
   const meta = script.script_json.find(isMetaEntry) as
     ScriptJsonMeta | undefined;
   const scriptName = meta?.name || script.name;
@@ -30,6 +35,8 @@ export async function GET(
       scriptAuthor,
       characters,
       scriptJson: script.script_json,
+      globalJinxes,
+      bootleggerRules: script.bootlegger_rules,
     });
   } catch (error) {
     console.error("PDF generation failed", error);

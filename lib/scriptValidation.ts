@@ -47,6 +47,36 @@ function readOptionalString(
   return { ok: true, value: trimmed || undefined };
 }
 
+// Per the official script-schema.json: `_meta.bootlegger` is an array of
+// up to 10 custom homebrew-rule strings (distinct from the Bootlegger
+// character's own fixed ability text, which just points here).
+const MAX_BOOTLEGGER_RULES = 10;
+
+function readOptionalStringArray(
+  value: unknown,
+  field: string,
+): { ok: true; value?: string[] } | { ok: false; error: string } {
+  if (value === undefined || value === null) return { ok: true };
+  if (!Array.isArray(value)) {
+    return { ok: false, error: `"${field}" must be a list of text.` };
+  }
+  if (value.length > MAX_BOOTLEGGER_RULES) {
+    return {
+      ok: false,
+      error: `"${field}" can have at most ${MAX_BOOTLEGGER_RULES} entries (got ${value.length}).`,
+    };
+  }
+  const rules: string[] = [];
+  for (const [i, entry] of value.entries()) {
+    if (typeof entry !== "string") {
+      return { ok: false, error: `"${field}[${i}]" must be text.` };
+    }
+    const trimmed = entry.trim();
+    if (trimmed) rules.push(trimmed);
+  }
+  return { ok: true, value: rules.length > 0 ? rules : undefined };
+}
+
 /** A character entry that resolves to a full inline definition — enough to
  * create a brand-new homebrew `characters` row if it doesn't already match
  * an official one. */
@@ -72,7 +102,7 @@ export interface NormalizedCharacterRef {
 }
 
 export interface NormalizedScriptUpload {
-  meta: { name: string; author?: string };
+  meta: { name: string; author?: string; bootleggerRules?: string[] };
   /** De-duplicated, in original order. Guaranteed non-empty. */
   characters: NormalizedCharacterRef[];
   /** The exact parsed JSON array, stored verbatim as script_json — the
@@ -120,6 +150,7 @@ export function parseScriptUpload(rawText: string): ScriptValidationResult {
 
   let metaName: string | undefined;
   let metaAuthor: string | undefined;
+  let metaBootleggerRules: string[] | undefined;
   let sawMeta = false;
   const characters: NormalizedCharacterRef[] = [];
   const seenIds = new Set<string>();
@@ -158,6 +189,9 @@ export function parseScriptUpload(rawText: string): ScriptValidationResult {
       const authorResult = readOptionalString(obj.author, "_meta.author");
       if (!authorResult.ok) return authorResult;
       metaAuthor = authorResult.value;
+      const bootleggerResult = readOptionalStringArray(obj.bootlegger, "_meta.bootlegger");
+      if (!bootleggerResult.ok) return bootleggerResult;
+      metaBootleggerRules = bootleggerResult.value;
       continue;
     }
 
@@ -227,7 +261,7 @@ export function parseScriptUpload(rawText: string): ScriptValidationResult {
   return {
     ok: true,
     value: {
-      meta: { name: metaName, author: metaAuthor },
+      meta: { name: metaName, author: metaAuthor, bootleggerRules: metaBootleggerRules },
       characters,
       raw: parsed,
     },

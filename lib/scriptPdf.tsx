@@ -15,11 +15,16 @@ import type {
   ScriptJsonEntry,
   Team,
 } from "@/lib/types";
-import { TEAM_LABELS, TEAM_ORDER, isCharacterObjectEntry } from "@/lib/types";
+import { TEAM_LABELS, TEAM_ORDER } from "@/lib/types";
 import {
   buildNightOrder,
   type NightOrderEntry,
 } from "@/lib/nightOrder";
+import {
+  resolveJinxesForScript,
+  type GlobalJinxRow,
+  type JinxEntry,
+} from "@/lib/jinxes";
 
 /**
  * Renders a "printed script sheet" PDF for a script — the same kind of
@@ -28,17 +33,27 @@ import {
  *
  * Structure (per Diego's side-by-side comparison against the official
  * export, an icon/layout pass, then a correction to both — see
- * build-plan.md's Phase 2 follow-up #10, #11 and #12 for the full history):
- *   1. Character sheet — every character on the script (Townsfolk, Outsider,
- *      Minion, Demon, Traveller — Fabled/Loric characters are NOT shown
- *      here, see page 2), grouped by team, split into two balanced columns.
- *      Each character is a row: its (large) icon on the left, vertically
- *      centered against the name+ability text block to its right.
+ * build-plan.md's Phase 2 follow-up #10, #11 and #12 for the full history;
+ * Fabled/Loric relocated to the page-1 header and Travellers/Bootlegger
+ * rules relocated to the Quick Reference page in later rounds, see below):
+ *   1. Character sheet — every *assigned-role* character on the script
+ *      (Townsfolk, Outsider, Minion, Demon only — Traveller is an optional
+ *      add-on team, not part of the core role count, and Fabled/Loric are
+ *      script-wide rule modifiers, so neither is shown here, see page 2),
+ *      grouped by team, split into two balanced columns. Each character is
+ *      a row: its (large) icon on the left, vertically centered against the
+ *      name+ability text block to its right. Fabled/Loric characters
+ *      (rare, at most a handful per script) still get a compact icon+name
+ *      badge on this page's header row, next to the title/author.
  *   2. Quick reference — three columns: First Night wake order (icon+name
- *      only) on the left, Other Nights wake order on the right, and Jinxes
- *      + Fabled/Loric characters in the middle. The standard player-count
- *      table runs full-width across the bottom of the page, in its
- *      traditional horizontal orientation (player counts as columns,
+ *      only, Travellers excluded — see lib/nightOrder.ts) on the left,
+ *      Other Nights wake order on the right, and, in the middle, Jinxes,
+ *      then (when present) the script's Bootlegger house rules, its Fabled
+ *      characters, its Loric characters, and its recommended Traveller
+ *      roster — each its own labeled sub-section, shown only when the
+ *      script actually has that content. The standard player-count table
+ *      runs full-width across the bottom of the page, in its traditional
+ *      horizontal orientation (player counts as columns,
  *      Townsfolk/Outsider/Minion/Demon as rows).
  *   3. First Night — full run sheet (icon + name + reminder text), a single
  *      column, tuned to fit even a long wake order on one page.
@@ -185,10 +200,14 @@ function nameColorFor(team: Team): string {
 
 // Teams shown on the page 1 character sheet — Fabled/Loric are special,
 // script-wide rule modifiers rather than characters players are assigned,
-// so (matching the official export) they're surfaced on the Quick
-// Reference page instead, alongside Jinxes and the player-count table.
+// so (matching the official export) they get a compact badge on this
+// page's header row instead (see HeaderFabledBadge). Traveller is an
+// optional add-on team rather than a core assigned role, so — per Diego's
+// ask — it's shown on the Quick Reference page instead, alongside Jinxes
+// and any Bootlegger house rules, freeing up page-1 room for the roles
+// that actually need the full character-sheet treatment.
 const SHEET_TEAM_ORDER: Team[] = TEAM_ORDER.filter(
-  (t) => t !== "fabled" && t !== "loric",
+  (t) => t !== "fabled" && t !== "loric" && t !== "traveller",
 );
 
 const styles = StyleSheet.create({
@@ -220,11 +239,21 @@ const styles = StyleSheet.create({
   // Diego asked for the script name + author to take up noticeably less
   // vertical room here and for the author to sit right after the title on
   // one line, matching how the official export presents it, rather than
-  // a large centered title with the byline stacked below.
+  // a large centered title with the byline stacked below. `space-between`
+  // splits it into the title/byline group on the left and (when the
+  // script has any) the Fabled/Loric badge row on the right, both on one
+  // baseline-aligned row — per Diego's ask for those badges to share the
+  // title's row rather than living on their own page-2 section.
   sheetHeaderRow: {
     flexDirection: "row",
     alignItems: "baseline",
+    justifyContent: "space-between",
     marginBottom: 6,
+  },
+  sheetHeaderTitleGroup: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    flexShrink: 1,
   },
   sheetTitle: {
     fontFamily: "Pirata One",
@@ -237,6 +266,25 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: INK,
     marginLeft: 8,
+  },
+  sheetHeaderFabledGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+    marginLeft: 10,
+  },
+  headerFabledBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: 7,
+  },
+  headerFabledName: {
+    fontFamily: "Oswald",
+    fontWeight: 600,
+    fontSize: 6.3,
+    color: FABLED_COLOR,
+    marginLeft: 2,
   },
   // Team-type heading (TOWNSFOLK, OUTSIDERS, MINIONS, DEMONS, TRAVELLERS) on
   // the character sheet — a small gold-bordered box around the label (the
@@ -349,12 +397,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     marginTop: 6,
   },
+  // Side (First/Other Night) columns are narrower than the middle column
+  // on purpose — per Diego's ask for more room in the middle for
+  // Jinxes/Fabled/Loric/Bootlegger/Travellers, since the wake-order rows
+  // only need enough width for an index + icon + name, while the middle
+  // column carries full ability/reason text. Ratio (0.8 / 1.4 / 0.8) sums
+  // to 3, the same total as the previous equal (1/1/1) split, so the page
+  // as a whole isn't any wider or narrower than before.
   refColSide: {
-    flex: 1,
+    flex: 0.8,
     paddingHorizontal: 6,
   },
   refColMiddle: {
-    flex: 1,
+    flex: 1.4,
     paddingHorizontal: 8,
     borderLeftWidth: 0.5,
     borderLeftColor: HAIRLINE,
@@ -387,6 +442,18 @@ const styles = StyleSheet.create({
   jinxRow: {
     marginBottom: 6,
   },
+  jinxHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  jinxIconPair: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: 5,
+  },
+  jinxIconGap: {
+    marginLeft: 2,
+  },
   jinxNames: {
     fontFamily: "Oswald",
     fontWeight: 700,
@@ -401,27 +468,59 @@ const styles = StyleSheet.create({
     lineHeight: 1.15,
     marginTop: 1,
   },
-  fabledCard: {
-    marginBottom: 8,
+  // Fabled/Loric and (recommended) Traveller roster entries, shown in the
+  // Quick Reference page's middle column (below Jinxes and any Bootlegger
+  // rules) rather than on the page-1 character sheet — none of these three
+  // are among the core assigned roles the character sheet counts toward.
+  // Icon on the left, name + ability stacked to its right, same shape as a
+  // page-1 CharacterEntry row but sized for the narrower reference-page
+  // column. Shared by all three sub-sections; the name's color comes from
+  // nameColorFor(team) per entry.
+  refEntryRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 6,
   },
-  fabledName: {
+  refEntryIconGap: {
+    marginRight: 6,
+  },
+  refEntryTextWrap: {
+    flex: 1,
+  },
+  refEntryName: {
     fontFamily: "Oswald",
     fontWeight: 700,
-    fontSize: 8.5,
-    color: FABLED_COLOR,
-    textAlign: "center",
+    fontSize: 8,
   },
-  fabledIconRow: {
-    alignItems: "center",
-    justifyContent: "center",
-    marginVertical: 3,
-  },
-  fabledAbility: {
+  refEntryAbility: {
     fontFamily: "Oswald",
     fontWeight: 400,
-    fontSize: 7.3,
+    fontSize: 7.2,
     color: INK,
-    lineHeight: 1.18,
+    lineHeight: 1.15,
+    marginTop: 1,
+  },
+  // A script-specific Bootlegger house-rule note (from the uploaded
+  // JSON's `_meta.bootlegger` — see
+  // supabase/migrations/20260914010000_script_bootlegger_rules.sql), shown
+  // in the Quick Reference page's middle column, under a BOOTLEGGER RULES
+  // sub-heading, alongside Jinxes and the Traveller roster.
+  bootleggerBox: {
+    marginBottom: 10,
+    paddingLeft: 8,
+    borderLeftWidth: 2,
+    borderLeftColor: FABLED_COLOR,
+  },
+  bootleggerLine: {
+    // Sorts Mill Goudy/italic, not Oswald — Oswald is only registered in
+    // its regular (non-italic) weights above (see registerFonts), and
+    // react-pdf throws at render time for a style/weight it has no font
+    // file for, rather than silently falling back to upright.
+    fontFamily: "Sorts Mill Goudy",
+    fontStyle: "italic",
+    fontSize: 8.5,
+    color: INK,
+    lineHeight: 1.3,
   },
   // Outer frame gives the table the double-ruled-border look of the
   // official rulebook table (Diego's reference) instead of a single thin
@@ -1035,68 +1134,29 @@ function FullNightPage({
 // ---- Jinxes -----------------------------------------------------------
 //
 // A "jinx" is a specific ruling for how two particular characters interact
-// when both are in play. botchub doesn't have a data model for these yet —
-// no upload flow exists (Phase 4), and the seeded script_json for existing
-// scripts doesn't carry them. Rather than fabricate rulings, this reads
-// them opportunistically from each script's own JSON, following the same
-// per-character `jinxes: [{ id, reason }]` shape the official
-// script-schema.json format uses — so a script that *does* carry real jinx
-// data (a future upload, or a script JSON pasted in from elsewhere that
-// already has it) renders it correctly, and a script that doesn't simply
-// gets no Jinxes section, same as the night-order pages already do when
-// there's no data.
+// when both are in play. See lib/jinxes.ts (resolveJinxesForScript) for
+// where this data actually comes from — an official, game-wide dataset
+// (supabase/migrations/20260914000000_character_jinxes.sql) merged with
+// any script-specific inline jinxes, since the latter is what the earlier
+// version of this file could read but essentially no real script upload
+// (including Diego's own test case) ever carries.
 
-interface JinxEntry {
-  key: string;
-  nameA: string;
-  nameB: string;
-  reason: string;
-}
-
-function extractJinxes(
-  scriptJson: ScriptJsonEntry[],
-  characters: Character[],
-): JinxEntry[] {
-  const nameById = new Map(characters.map((c) => [c.character_id, c.name]));
-  const jinxes: JinxEntry[] = [];
-  const seenPairs = new Set<string>();
-
-  for (const entry of scriptJson) {
-    if (!isCharacterObjectEntry(entry)) continue;
-    const rawJinxes = entry.jinxes;
-    if (!Array.isArray(rawJinxes)) continue;
-
-    const idA = entry.id;
-    const nameA = nameById.get(idA) ?? entry.name ?? idA;
-
-    for (const raw of rawJinxes) {
-      if (!raw || typeof raw !== "object") continue;
-      const idB = (raw as { id?: unknown }).id;
-      const reason = (raw as { reason?: unknown }).reason;
-      if (typeof idB !== "string" || typeof reason !== "string" || !reason) {
-        continue;
-      }
-      const pairKey = [idA, idB].sort().join("|");
-      if (seenPairs.has(pairKey)) continue;
-      seenPairs.add(pairKey);
-      const nameB = nameById.get(idB) ?? idB;
-      jinxes.push({ key: pairKey, nameA, nameB, reason });
-    }
-  }
-
-  return jinxes;
-}
+const JINX_ICON_SIZE = 14;
 
 // ---- Fabled & Loric -----------------------------------------------------
 //
 // Fabled (and Loric) characters aren't assigned to a player — they're
-// script-wide rule modifiers (e.g. the Djinn). The official export doesn't
-// show them on the character sheet either; it lists them on the reference
-// page instead, which is where they live here too.
+// script-wide rule modifiers (e.g. the Djinn). Per Diego's side-by-side
+// comparison against the official export, they get compact icon+name
+// badges in the top-right of page 1, on the same row as the title/author
+// (HeaderFabledBadge). They *also* get their own full icon+name+ability
+// listing on the Quick Reference page's middle column — Fabled and Loric
+// each under their own sub-heading, same treatment as Jinxes/Travellers —
+// since the page-1 badge alone has no room for ability text.
 
-const FABLED_ICON_SIZE = 26;
+const HEADER_FABLED_ICON_SIZE = 14;
 
-function FabledEntry({
+function HeaderFabledBadge({
   character,
   icon,
 }: {
@@ -1104,14 +1164,50 @@ function FabledEntry({
   icon: Buffer | null | undefined;
 }) {
   return (
-    <View style={styles.fabledCard} wrap={false}>
-      <Text style={styles.fabledName}>{character.name}</Text>
-      <View style={styles.fabledIconRow}>
-        <IconBadge buffer={icon} fallbackLetter={character.name} size={FABLED_ICON_SIZE} />
+    <View style={styles.headerFabledBadge} wrap={false}>
+      <IconBadge buffer={icon} fallbackLetter={character.name} size={HEADER_FABLED_ICON_SIZE} />
+      <Text style={styles.headerFabledName}>{character.name}</Text>
+    </View>
+  );
+}
+
+// ---- Fabled / Loric / Traveller listings (Quick Reference page) -------
+//
+// Fabled, Loric, and Traveller are all shown on the Quick Reference page's
+// middle column (below Jinxes and any Bootlegger rules) rather than on the
+// page-1 character sheet — none of them is one of the core assigned roles
+// the character sheet balances by player count. Traveller is an optional
+// add-on team the Storyteller may draw from, so per Diego's ask its
+// sub-heading reads "RECOMMENDED TRAVELLERS" rather than just
+// "TRAVELLERS". Each sub-section only renders when the script actually
+// has that kind of character.
+
+const REF_ENTRY_ICON_SIZE = 22;
+
+function ReferenceCharacterEntry({
+  character,
+  icon,
+}: {
+  character: Character;
+  icon: Buffer | null | undefined;
+}) {
+  return (
+    <View style={styles.refEntryRow} wrap={false}>
+      <View style={styles.refEntryIconGap}>
+        <IconBadge
+          buffer={icon}
+          fallbackLetter={character.name}
+          size={REF_ENTRY_ICON_SIZE}
+        />
       </View>
-      {character.ability && (
-        <Text style={styles.fabledAbility}>{character.ability}</Text>
-      )}
+      <View style={styles.refEntryTextWrap}>
+        <Text style={[styles.refEntryName, { color: nameColorFor(character.team) }]}>
+          {character.name}
+        </Text>
+        {character.ability && (
+          <Text style={styles.refEntryAbility}>{character.ability}</Text>
+        )}
+      </View>
     </View>
   );
 }
@@ -1186,7 +1282,10 @@ function ReferencePage({
   firstNight,
   otherNight,
   jinxes,
-  fabled,
+  bootleggerRules,
+  fabledCharacters,
+  loricCharacters,
+  travellers,
   icons,
 }: {
   scriptName: string;
@@ -1194,12 +1293,16 @@ function ReferencePage({
   firstNight: NightOrderEntry[];
   otherNight: NightOrderEntry[];
   jinxes: JinxEntry[];
-  fabled: Character[];
+  bootleggerRules: string[] | null;
+  fabledCharacters: Character[];
+  loricCharacters: Character[];
+  travellers: Character[];
   icons: Map<string, Buffer | null>;
 }) {
-  const hasJinxes = jinxes.length > 0;
-  const hasFabled = fabled.length > 0;
-
+  const hasBootlegger = Boolean(bootleggerRules && bootleggerRules.length > 0);
+  const hasFabled = fabledCharacters.length > 0;
+  const hasLoric = loricCharacters.length > 0;
+  const hasTravellers = travellers.length > 0;
   return (
     <Page size="A4" style={styles.page}>
       <Text style={styles.title}>Quick Reference</Text>
@@ -1223,38 +1326,89 @@ function ReferencePage({
           )}
         </View>
 
-        {/* Middle — one combined "Fabled & Jinxes" header, always shown
-            (even when the script has neither), then each section that has
-            content. A small sub-heading only appears when both sections
-            are present, to tell them apart — with just one, the combined
-            header above already says what it is. The player-count table
-            moves to the bottom of the page, full-width, below. */}
+        {/* Middle — Jinxes, then, when present: the script's Bootlegger
+            house rules, its Fabled characters, its Loric characters, and
+            its (recommended) Traveller roster — each its own labeled
+            sub-section, all moved here from page 1 so the character sheet
+            only has to fit the core assigned roles (Fabled/Loric also get
+            a compact icon+name-only badge on page 1's header row, see
+            HeaderFabledBadge — this section is where their ability text
+            actually shows). Each jinx pair's own two token icons, when
+            this script's icon set has them — see lib/jinxes.ts's
+            idA/idB, resolved against the same `icons` map every other
+            icon on this document draws from. */}
         <View style={styles.refColMiddle}>
-          <Text style={styles.colHeading}>FABLED & JINXES</Text>
+          <Text style={styles.colHeading}>FABLED, JINXES & LORIC</Text>
 
-          {hasJinxes && (
-            <>
-              {hasFabled && <Text style={styles.subHeading}>Jinxes</Text>}
-              {jinxes.map((j) => (
-                <View key={j.key} style={styles.jinxRow} wrap={false}>
-                  <Text style={styles.jinxNames}>
-                    {j.nameA} & {j.nameB}
-                  </Text>
-                  <Text style={styles.jinxReason}>{j.reason}</Text>
+          {jinxes.map((j) => (
+            <View key={j.key} style={styles.jinxRow} wrap={false}>
+              <View style={styles.jinxHeader}>
+                <View style={styles.jinxIconPair}>
+                  <IconBadge
+                    buffer={j.idA ? icons.get(j.idA) : undefined}
+                    fallbackLetter={j.nameA}
+                    size={JINX_ICON_SIZE}
+                  />
+                  <View style={styles.jinxIconGap}>
+                    <IconBadge
+                      buffer={j.idB ? icons.get(j.idB) : undefined}
+                      fallbackLetter={j.nameB}
+                      size={JINX_ICON_SIZE}
+                    />
+                  </View>
                 </View>
-              ))}
+                <Text style={styles.jinxNames}>
+                  {j.nameA} & {j.nameB}
+                </Text>
+              </View>
+              <Text style={styles.jinxReason}>{j.reason}</Text>
+            </View>
+          ))}
+
+          {hasBootlegger && (
+            <>
+              <Text style={[styles.subHeading, { marginTop: 8 }]}>
+                BOOTLEGGER RULES
+              </Text>
+              <View style={styles.bootleggerBox}>
+                {bootleggerRules!.map((rule, i) => (
+                  <Text key={i} style={styles.bootleggerLine}>
+                    {rule}
+                  </Text>
+                ))}
+              </View>
             </>
           )}
 
           {hasFabled && (
             <>
-              {hasJinxes && (
-                <Text style={[styles.subHeading, { marginTop: 6 }]}>
-                  Fabled
-                </Text>
-              )}
-              {fabled.map((c) => (
-                <FabledEntry key={c.id} character={c} icon={icons.get(c.id)} />
+              <Text style={[styles.subHeading, { marginTop: 8 }]}>
+                FABLED
+              </Text>
+              {fabledCharacters.map((c) => (
+                <ReferenceCharacterEntry key={c.id} character={c} icon={icons.get(c.id)} />
+              ))}
+            </>
+          )}
+
+          {hasLoric && (
+            <>
+              <Text style={[styles.subHeading, { marginTop: 8 }]}>
+                LORIC
+              </Text>
+              {loricCharacters.map((c) => (
+                <ReferenceCharacterEntry key={c.id} character={c} icon={icons.get(c.id)} />
+              ))}
+            </>
+          )}
+
+          {hasTravellers && (
+            <>
+              <Text style={[styles.subHeading, { marginTop: 8 }]}>
+                RECOMMENDED TRAVELLERS
+              </Text>
+              {travellers.map((c) => (
+                <ReferenceCharacterEntry key={c.id} character={c} icon={icons.get(c.id)} />
               ))}
             </>
           )}
@@ -1293,11 +1447,15 @@ async function ScriptPdfDocument({
   scriptAuthor,
   characters,
   scriptJson,
+  globalJinxes,
+  bootleggerRules,
 }: {
   scriptName: string;
   scriptAuthor: string | null;
   characters: Character[];
   scriptJson: ScriptJsonEntry[];
+  globalJinxes: GlobalJinxRow[];
+  bootleggerRules: string[] | null;
 }) {
   registerFonts();
 
@@ -1307,28 +1465,47 @@ async function ScriptPdfDocument({
   })).filter((group) => group.characters.length > 0);
   const sheetScale = computeSheetScale(byTeam);
 
+  // `fabled` (combined, original array order) feeds the page-1 header
+  // badge row; `fabledOnly`/`loricOnly` (split by team) feed their own
+  // separate labeled sub-sections on the Quick Reference page.
   const fabled = characters.filter(
     (c) => c.team === "fabled" || c.team === "loric",
   );
+  const fabledOnly = characters.filter((c) => c.team === "fabled");
+  const loricOnly = characters.filter((c) => c.team === "loric");
+  const travellers = characters.filter((c) => c.team === "traveller");
+  const hasBootlegger = Boolean(bootleggerRules && bootleggerRules.length > 0);
 
   const { firstNight, otherNight } = buildNightOrder(characters);
-  const jinxes = extractJinxes(scriptJson, characters);
+  const jinxes = resolveJinxesForScript(scriptJson, characters, globalJinxes);
   const icons = await loadAllIcons(characters, [...firstNight, ...otherNight]);
 
   const showReferencePage =
     firstNight.length > 0 ||
     otherNight.length > 0 ||
     jinxes.length > 0 ||
-    fabled.length > 0;
+    fabledOnly.length > 0 ||
+    loricOnly.length > 0 ||
+    travellers.length > 0 ||
+    hasBootlegger;
 
   return (
     <Document title={scriptName} author={scriptAuthor ?? undefined}>
       {/* Page 1 — character sheet, every character on the script. */}
       <Page size="A4" style={styles.page}>
         <View style={styles.sheetHeaderRow}>
-          <Text style={styles.sheetTitle}>{scriptName}</Text>
-          {scriptAuthor && (
-            <Text style={styles.sheetByline}>by {scriptAuthor}</Text>
+          <View style={styles.sheetHeaderTitleGroup}>
+            <Text style={styles.sheetTitle}>{scriptName}</Text>
+            {scriptAuthor && (
+              <Text style={styles.sheetByline}>by {scriptAuthor}</Text>
+            )}
+          </View>
+          {fabled.length > 0 && (
+            <View style={styles.sheetHeaderFabledGroup}>
+              {fabled.map((c) => (
+                <HeaderFabledBadge key={c.id} character={c} icon={icons.get(c.id)} />
+              ))}
+            </View>
           )}
         </View>
         {byTeam.map(({ team, characters: teamCharacters }) => (
@@ -1343,11 +1520,15 @@ async function ScriptPdfDocument({
         <Footer scriptName={scriptName} />
       </Page>
 
-      {/* Page 2 — First Night / Other Nights wake order on the sides,
-          Jinxes + Fabled/Loric + the standard player-count table in the
-          middle. Player count always has content, but the whole page is
-          skipped for a script with none of the other three either, same
-          honesty rule as the night pages below. */}
+      {/* Page 2 — First Night / Other Nights wake order on the sides;
+          Jinxes, Bootlegger rules, Fabled, Loric, and the (recommended)
+          Traveller roster stacked in the middle (Fabled/Loric also get a
+          compact icon-only badge on page 1's header row — see
+          HeaderFabledBadge above — but their ability text only shows
+          here); the standard player-count table across the bottom.
+          Player count always has content, but the whole page is skipped
+          for a script with none of the rest either, same honesty rule as
+          the night pages below. */}
       {showReferencePage && (
         <ReferencePage
           scriptName={scriptName}
@@ -1355,7 +1536,10 @@ async function ScriptPdfDocument({
           firstNight={firstNight}
           otherNight={otherNight}
           jinxes={jinxes}
-          fabled={fabled}
+          bootleggerRules={bootleggerRules}
+          fabledCharacters={fabledOnly}
+          loricCharacters={loricOnly}
+          travellers={travellers}
           icons={icons}
         />
       )}
@@ -1391,11 +1575,19 @@ export async function renderScriptPdf({
   scriptAuthor,
   characters,
   scriptJson,
+  globalJinxes = [],
+  bootleggerRules = null,
 }: {
   scriptName: string;
   scriptAuthor: string | null;
   characters: Character[];
   scriptJson: ScriptJsonEntry[];
+  /** Applicable rows from `character_jinxes` — see
+   * lib/queries.ts's getJinxesForCharacterIds. Optional/defaults to none
+   * so existing callers (and tests) that don't care about jinxes don't
+   * need updating; a real script page/PDF route should always pass this. */
+  globalJinxes?: GlobalJinxRow[];
+  bootleggerRules?: string[] | null;
 }): Promise<Buffer> {
   const { renderToBuffer } = await import("@react-pdf/renderer");
   const doc = await ScriptPdfDocument({
@@ -1403,6 +1595,8 @@ export async function renderScriptPdf({
     scriptAuthor,
     characters,
     scriptJson,
+    globalJinxes,
+    bootleggerRules,
   });
   return renderToBuffer(doc);
 }
