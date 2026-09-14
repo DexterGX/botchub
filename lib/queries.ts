@@ -114,7 +114,13 @@ export async function getCharactersForScript(
   const { data, error } = await supabase
     .from("script_characters")
     .select("character:characters(*)")
-    .eq("script_id", scriptId);
+    .eq("script_id", scriptId)
+    // Preserves the script's own author-intended character order (see
+    // supabase/migrations/20260913010000_script_character_position.sql) —
+    // a plain join with no `order by` has no guaranteed row order in
+    // Postgres/PostgREST, which is exactly what let the PDF and the
+    // script page disagree on ordering despite reading identical data.
+    .order("position", { ascending: true });
 
   if (error) throw error;
   // Same untyped-embed caveat as searchScripts above: this is a
