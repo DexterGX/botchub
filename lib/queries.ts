@@ -8,6 +8,7 @@ import type {
   Edition,
 } from "@/lib/types";
 import { SCRIPTS_PAGE_SIZE } from "@/lib/types";
+import type { GlobalJinxRow } from "@/lib/jinxes";
 
 export async function getRecentScripts(limit = 6): Promise<Script[]> {
   const supabase = await createClient();
@@ -129,6 +130,34 @@ export async function getCharactersForScript(
   return rows
     .map((row) => row.character)
     .filter((c): c is Character => Boolean(c));
+}
+
+/** The official jinx pairs (see
+ * supabase/migrations/20260914000000_character_jinxes.sql) applicable to a
+ * specific set of characters — i.e. both sides of the pair are among the
+ * given ids. Pass a script's own character uuids (from
+ * getCharactersForScript) to get exactly the jinxes relevant to that
+ * script. Two separate `.in()` filters on the same table, rather than an
+ * `.or()`, since PostgREST's `.or()` syntax doesn't cleanly express "both
+ * columns must be in this set" — this reads as "rows where character_a_id
+ * is in the set AND character_b_id is in the set", which is exactly that. */
+export async function getJinxesForCharacterIds(
+  characterIds: string[],
+): Promise<GlobalJinxRow[]> {
+  if (characterIds.length === 0) return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("character_jinxes")
+    .select("character_a_id, character_b_id, reason")
+    .in("character_a_id", characterIds)
+    .in("character_b_id", characterIds);
+
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    characterAId: row.character_a_id as string,
+    characterBId: row.character_b_id as string,
+    reason: row.reason as string,
+  }));
 }
 
 /** Official characters only, grouped for a filter dropdown — cheap enough to

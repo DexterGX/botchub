@@ -4,18 +4,25 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   getCharactersForScript,
+  getJinxesForCharacterIds,
   getScriptById,
   incrementScriptViewCount,
 } from "@/lib/queries";
 import { buildNightOrder, type NightOrderEntry } from "@/lib/nightOrder";
+import { resolveJinxesForScript } from "@/lib/jinxes";
 import { buildScriptToolUrl } from "@/lib/scriptTool";
 import {
   TEAM_LABELS,
   TEAM_ORDER,
   editionLabel,
   isMetaEntry,
+  type Character,
   type ScriptJsonMeta,
 } from "@/lib/types";
+
+const SHEET_TEAM_ORDER = TEAM_ORDER.filter(
+  (t) => t !== "fabled" && t !== "loric",
+);
 
 interface ScriptPageProps {
   params: Promise<{ id: string }>;
@@ -51,10 +58,23 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
     ScriptJsonMeta | undefined;
   const author = meta?.author;
 
-  const byTeam = TEAM_ORDER.map((team) => ({
+  const byTeam = SHEET_TEAM_ORDER.map((team) => ({
     team,
     characters: characters.filter((c) => c.team === team),
   })).filter((group) => group.characters.length > 0);
+
+  // Fabled/Loric aren't assigned to a player — they're script-wide rule
+  // modifiers (e.g. the Djinn) — so, per Diego's ask (matching the PDF's
+  // page-1 header treatment, lib/scriptPdf.tsx's HeaderFabledBadge), they
+  // show as compact badges up near the title rather than as their own
+  // full team section further down the page.
+  const fabled = characters.filter(
+    (c) => c.team === "fabled" || c.team === "loric",
+  );
+
+  const globalJinxes = await getJinxesForCharacterIds(characters.map((c) => c.id));
+  const jinxes = resolveJinxesForScript(script.script_json, characters, globalJinxes);
+  const iconByCharacterId = new Map(characters.map((c) => [c.id, c.icon_url]));
 
   const { firstNight, otherNight, missingData } = buildNightOrder(characters);
 
@@ -81,12 +101,32 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
             {script.view_count === 1 ? "" : "s"}
           </p>
         </div>
+        {fabled.length > 0 && (
+          <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+            {fabled.map((c) => (
+              <FabledBadge key={c.id} character={c} />
+            ))}
+          </div>
+        )}
       </div>
 
       {script.description && (
         <p className="mt-4 text-zinc-700 dark:text-zinc-300">
           {script.description}
         </p>
+      )}
+
+      {script.bootlegger_rules && script.bootlegger_rules.length > 0 && (
+        <div className="mt-4 rounded-lg border-l-2 border-amber-700/60 bg-amber-50 px-4 py-3 dark:bg-amber-950/20">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-500">
+            Bootlegger rules
+          </h3>
+          <ul className="mt-1 space-y-1 text-sm italic text-zinc-700 dark:text-zinc-300">
+            {script.bootlegger_rules.map((rule, i) => (
+              <li key={i}>{rule}</li>
+            ))}
+          </ul>
+        </div>
       )}
 
       <div className="mt-6 flex flex-wrap gap-3">
@@ -208,6 +248,49 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
         </div>
       </section>
 
+      {/* Fabled/Loric get a compact icon+name badge up near the title (see
+          FabledBadge above), matching the PDF's page-1 header — but that
+          badge has no room for ability text, so (matching the PDF's Quick
+          Reference "FABLED, JINXES & LORIC" section, lib/scriptPdf.tsx)
+          they also get a full listing here, name + ability, same as any
+          other character on the page. */}
+      {fabled.length > 0 && (
+        <section className="mt-10">
+          <h2 className="text-lg font-semibold">Fabled &amp; Loric</h2>
+          <ul className="mt-4 space-y-4">
+            {fabled.map((c) => (
+              <li key={c.id} className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-amber-100 dark:bg-amber-950/40">
+                  {c.icon_url ? (
+                    <Image
+                      src={c.icon_url}
+                      alt=""
+                      width={40}
+                      height={40}
+                      className="h-10 w-10 object-contain"
+                    />
+                  ) : (
+                    <span className="text-xs font-semibold text-amber-700 dark:text-amber-500">
+                      {c.name.slice(0, 1)}
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <div className="font-medium text-amber-800 dark:text-amber-500">
+                    {c.name}
+                  </div>
+                  {c.ability && (
+                    <p className="mt-0.5 text-sm text-zinc-600 dark:text-zinc-400">
+                      {c.ability}
+                    </p>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section className="mt-10">
         {/* Collapsed by default (no `open` attribute) — a native <details>
             disclosure rather than a client-side toggle, so it needs no JS
@@ -240,7 +323,86 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
           )}
         </details>
       </section>
+
+      {jinxes.length > 0 && (
+        <section className="mt-10">
+          <details>
+            <summary className="cursor-pointer text-lg font-semibold marker:text-zinc-400 dark:marker:text-zinc-600">
+              Jinxes
+            </summary>
+            <ul className="mt-4 space-y-4">
+              {jinxes.map((j) => (
+                <li key={j.key} className="flex items-start gap-3">
+                  <div className="mt-0.5 flex shrink-0 items-center -space-x-2">
+                    <JinxIcon
+                      iconUrl={j.idA ? iconByCharacterId.get(j.idA) ?? null : null}
+                      name={j.nameA}
+                    />
+                    <JinxIcon
+                      iconUrl={j.idB ? iconByCharacterId.get(j.idB) ?? null : null}
+                      name={j.nameB}
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">
+                      {j.nameA} &amp; {j.nameB}
+                    </div>
+                    <p className="mt-0.5 text-sm text-zinc-600 dark:text-zinc-400">
+                      {j.reason}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </details>
+        </section>
+      )}
     </main>
+  );
+}
+
+function FabledBadge({ character }: { character: Character }) {
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-amber-100 dark:bg-amber-950/40">
+        {character.icon_url ? (
+          <Image
+            src={character.icon_url}
+            alt=""
+            width={32}
+            height={32}
+            className="h-8 w-8 object-contain"
+          />
+        ) : (
+          <span className="text-xs font-semibold text-amber-700 dark:text-amber-500">
+            {character.name.slice(0, 1)}
+          </span>
+        )}
+      </div>
+      <span className="text-sm font-semibold text-amber-800 dark:text-amber-500">
+        {character.name}
+      </span>
+    </div>
+  );
+}
+
+function JinxIcon({ iconUrl, name }: { iconUrl: string | null; name: string }) {
+  return (
+    <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border-2 border-white bg-zinc-100 dark:border-zinc-950 dark:bg-zinc-800">
+      {iconUrl ? (
+        <Image
+          src={iconUrl}
+          alt=""
+          width={28}
+          height={28}
+          className="h-7 w-7 object-contain"
+        />
+      ) : (
+        <span className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-600">
+          {name.slice(0, 1)}
+        </span>
+      )}
+    </div>
   );
 }
 
