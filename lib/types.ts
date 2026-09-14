@@ -18,6 +18,11 @@ export interface Script {
   owner_id: string | null;
   name: string;
   description: string | null;
+  /** Free-text script-level notes — homebrew/Bootlegger rule clarifications,
+   * Fabled/Loric special-rule reminders, house rules, etc. Shown at the top
+   * of the Characters section on the script detail page. Distinct from
+   * `description` (a short blurb near the title). */
+  notes: string | null;
   script_json: ScriptJsonEntry[];
   edition: Edition;
   script_type: ScriptType;

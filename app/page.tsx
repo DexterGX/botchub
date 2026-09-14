@@ -20,9 +20,9 @@ const QUICK_ACTIONS = [
   {
     href: "/scripts/new",
     title: "Upload a script",
-    description: "Sign in to share your own custom script. Coming soon.",
+    description: "Sign in to share your own custom script.",
     icon: "⬆️",
-    disabled: true,
+    disabled: false,
   },
   {
     href: "/games",

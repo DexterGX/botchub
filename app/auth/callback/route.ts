@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -24,6 +25,10 @@ export async function GET(request: Request) {
     const supabase = await createClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
+      // Without this, the root layout's cached "Log in" header (rendered
+      // before this session existed) can keep showing after the redirect —
+      // same reason signInAction/signOutAction call this before redirecting.
+      revalidatePath("/", "layout");
       return NextResponse.redirect(`${origin}${next}`);
     }
   }

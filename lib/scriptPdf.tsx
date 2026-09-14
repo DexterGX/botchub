@@ -1,3 +1,4 @@
+import { readFile } from "fs/promises";
 import path from "path";
 import sharp from "sharp";
 import {
@@ -126,6 +127,55 @@ const HAIRLINE = "#ddd2b8";
 const FALLBACK_RING = "#b9ad8f";
 const FALLBACK_LETTER = "#8a7f63";
 
+// Declared here (rather than beside the other icon-size constants further
+// down) because `styles` below references it directly — a plain top-level
+// `const` used inside a later function body would be fine either way, but
+// StyleSheet.create() runs at module-init time, so anything it reads has to
+// already be initialized.
+const CHAR_ICON_SIZE = 40;
+
+// Base ("comfortable", scale = 1) sizing for the page 1 character sheet's
+// per-character rows and team headings. A script with enough characters
+// that this wouldn't all fit on one page at these base sizes gets scaled
+// down uniformly (see computeSheetScale below) rather than spilling extra
+// characters onto a near-blank second page — matching Diego's ask that the
+// character sheet "always fit" on page 1, the same way a physical printed
+// script does regardless of character count.
+const SHEET_BASE = {
+  iconSize: CHAR_ICON_SIZE,
+  nameFontSize: 9.5,
+  abilityFontSize: 8.3,
+  // Kept equal to CHARS_PER_ABILITY_LINE (defined later, alongside
+  // estimateCharacterWeight) by convention — both approximate the same
+  // "characters per wrapped ability line at scale 1" quantity. Duplicated
+  // as a literal rather than referenced because this object is initialized
+  // before that constant exists in module-eval order.
+  charsPerAbilityLine: 48,
+  rowMarginBottom: 4,
+  iconMarginRight: 6,
+  teamHeadingMarginTop: 8,
+  teamHeadingMarginBottom: 5,
+  teamHeadingFontSize: 9,
+  teamHeadingPaddingV: 3,
+  teamHeadingPaddingH: 10,
+};
+
+// Never shrink past this — beyond it the text would start becoming hard to
+// read, and no real BOTC script (official max is well under 30 characters)
+// should ever need to. If a script somehow still doesn't fit at the floor,
+// it spills to a second page rather than becoming illegible, but this is
+// not expected to happen in practice.
+const SHEET_MIN_SCALE = 0.62;
+
+// A4 in points, matching the `size="A4"` pages below, minus this page's own
+// vertical padding, minus a fixed estimate for the script name/author
+// header row (title/byline) and a small safety buffer for the approximation
+// error inherent in estimating text-wrap line counts by character count
+// rather than actual measured text width.
+const PAGE_HEIGHT_PT = 841.89;
+const SHEET_HEADER_HEIGHT_ESTIMATE = 34;
+const SHEET_SAFETY_BUFFER = 10;
+
 function nameColorFor(team: Team): string {
   if (team === "minion" || team === "demon") return EVIL_COLOR;
   if (team === "traveller") return TRAVELLER_COLOR;
@@ -164,29 +214,63 @@ const styles = StyleSheet.create({
     marginTop: 2,
     marginBottom: 12,
   },
-  dividerRow: {
+  // The character-sheet page's own header, distinct from `title`/`byline`
+  // above (still used on the Quick Reference / First Night / Other Nights
+  // pages, where the "title" is a fixed page label, not the script name).
+  // Diego asked for the script name + author to take up noticeably less
+  // vertical room here and for the author to sit right after the title on
+  // one line, matching how the official export presents it, rather than
+  // a large centered title with the byline stacked below.
+  sheetHeaderRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    marginBottom: 6,
+  },
+  sheetTitle: {
+    fontFamily: "Pirata One",
+    fontSize: 20,
+    color: EVIL_COLOR,
+  },
+  sheetByline: {
+    fontFamily: "Sorts Mill Goudy",
+    fontStyle: "italic",
+    fontSize: 10,
+    color: INK,
+    marginLeft: 8,
+  },
+  // Team-type heading (TOWNSFOLK, OUTSIDERS, MINIONS, DEMONS, TRAVELLERS) on
+  // the character sheet — a small gold-bordered box around the label (the
+  // original "pill" look), anchored to the left edge of the column, with a
+  // rule running through its vertical center out to the right edge of the
+  // column — the classic "divider with a label on it" look, just left-
+  // aligned instead of centered. teamHeadingRow lays out the box and the
+  // rule as a row so flex centering puts the (zero-height) rule's border
+  // at the same vertical midpoint as the box.
+  teamHeadingRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 5,
-    marginBottom: 4,
+    marginTop: 8,
+    marginBottom: 5,
   },
-  dividerLine: {
-    flexGrow: 1,
-    height: 0.75,
-    backgroundColor: GOLD,
-  },
-  dividerLabel: {
+  teamHeading: {
     fontFamily: "Oswald",
     fontWeight: 700,
     fontSize: 9,
     letterSpacing: 1.5,
     color: GOLD,
+    textAlign: "left",
+    paddingVertical: 3,
+    paddingHorizontal: 10,
     borderWidth: 0.75,
     borderColor: GOLD,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    marginHorizontal: 6,
+    borderRadius: 9,
+  },
+  teamHeadingRule: {
+    flex: 1,
+    height: 0,
+    borderBottomWidth: 0.75,
+    borderBottomColor: GOLD,
+    marginLeft: 8,
   },
   teamColumns: {
     flexDirection: "row",
@@ -201,7 +285,13 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   charIconWrap: {
-    marginRight: 6,
+    // A fixed width (not just marginRight) so every row's icon occupies
+    // exactly the same slot regardless of that particular icon image's own
+    // proportions — otherwise a source PNG with different internal padding
+    // could make the icon *look* off-center relative to the text beside it,
+    // and make the text column start at a slightly different x per row.
+    width: SHEET_BASE.iconSize,
+    marginRight: SHEET_BASE.iconMarginRight,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -211,15 +301,15 @@ const styles = StyleSheet.create({
   charName: {
     fontFamily: "Oswald",
     fontWeight: 700,
-    fontSize: 8.3,
+    fontSize: 9.5,
     textAlign: "left",
   },
   charAbility: {
     fontFamily: "Oswald",
     fontWeight: 400,
-    fontSize: 7.3,
+    fontSize: 8.3,
     color: INK,
-    lineHeight: 1.12,
+    lineHeight: 1.15,
     textAlign: "left",
     marginTop: 1,
   },
@@ -333,11 +423,25 @@ const styles = StyleSheet.create({
     color: INK,
     lineHeight: 1.18,
   },
-  playerTableWide: {
+  // Outer frame gives the table the double-ruled-border look of the
+  // official rulebook table (Diego's reference) instead of a single thin
+  // outline; the inner `playerTableWide` box keeps its own border too.
+  // `alignSelf: "center"` (rather than stretching to the page's full
+  // width, which a View defaults to inside a column-flex parent) is what
+  // lets the table size itself to its fixed-width columns below and sit
+  // centered with room on both sides, instead of reaching edge to edge.
+  playerTableOuter: {
     marginTop: 6,
+    alignSelf: "center",
+    borderWidth: 1.25,
+    borderColor: GOLD,
+    borderRadius: 3,
+    padding: 3,
+  },
+  playerTableWide: {
     borderWidth: 0.75,
     borderColor: GOLD,
-    borderRadius: 4,
+    borderRadius: 2,
   },
   playerTableWideHeaderRow: {
     flexDirection: "row",
@@ -353,42 +457,45 @@ const styles = StyleSheet.create({
     flexDirection: "row",
   },
   playerTableWideHeaderLabelCell: {
-    width: 90,
+    width: 68,
     fontFamily: "Oswald",
     fontWeight: 700,
-    fontSize: 7.5,
+    fontSize: 9,
     color: GOLD,
     textAlign: "left",
-    paddingVertical: 4,
-    paddingLeft: 6,
+    paddingVertical: 2.5,
+    paddingLeft: 5,
   },
   playerTableWideHeaderCell: {
-    flex: 1,
+    // A fixed width (not `flex: 1`) so the table sizes itself to its
+    // content instead of stretching to fill whatever width its container
+    // offers — that's what let it reach all the way to both page edges.
+    width: 24,
     fontFamily: "Oswald",
     fontWeight: 700,
-    fontSize: 7.5,
+    fontSize: 9,
     color: GOLD,
     textAlign: "center",
-    paddingVertical: 4,
+    paddingVertical: 2.5,
   },
   playerTableWideLabelCell: {
-    width: 90,
+    width: 68,
     fontFamily: "Oswald",
     fontWeight: 700,
-    fontSize: 7.5,
+    fontSize: 9,
     color: GOLD,
     textAlign: "left",
-    paddingVertical: 4,
-    paddingLeft: 6,
+    paddingVertical: 2.5,
+    paddingLeft: 5,
   },
   playerTableWideCell: {
-    flex: 1,
+    width: 24,
     fontFamily: "Oswald",
     fontWeight: 400,
-    fontSize: 7.5,
+    fontSize: 9,
     color: INK,
     textAlign: "center",
-    paddingVertical: 4,
+    paddingVertical: 2.5,
   },
   nightList: {
     marginTop: 8,
@@ -432,21 +539,73 @@ const styles = StyleSheet.create({
   },
 });
 
-/** Fetches a character icon and, if it's WebP (pdfkit/react-pdf can only
- * embed PNG or JPEG), converts it to PNG. Returns null on any failure so a
+/** The upstream character-icon assets (hotlinked from bra1n/townsquare's
+ * icon set) each sit on their own square transparent canvas, but the
+ * artwork *inside* that canvas is often not centered within it — e.g. Fang
+ * Gu's source PNG is a 539x539 square whose visible artwork only spans
+ * roughly y=41 to y=385, leaving 41px of empty space above it but 154px
+ * below (checked across ~20 icons from the set: every one is bottom-heavy
+ * like this, by anywhere from ~1.3x to ~4x). Rendering that raw image at a
+ * fixed size, even inside a perfectly centered flexbox slot, still looks
+ * off-center next to the character's name/ability text, because the slot
+ * is centering the image's *bounding box*, not the artwork within it.
+ *
+ * This re-centers the artwork itself: trim away the transparent padding,
+ * then pad back out to a square with the trimmed content centered, so the
+ * visible character art — not just its source canvas — sits in the middle
+ * of the icon slot. Runs on every icon regardless of source format (PNG or
+ * WebP), which also makes the old WebP-only PNG conversion unnecessary —
+ * this always emits PNG. */
+async function normalizeIconArtwork(bytes: Buffer): Promise<Buffer> {
+  try {
+    const trimmedBuffer = await sharp(bytes)
+      .trim({ threshold: 10 })
+      .png()
+      .toBuffer();
+    const { width, height } = await sharp(trimmedBuffer).metadata();
+    if (!width || !height) return trimmedBuffer;
+    const side = Math.max(width, height);
+    const padTop = Math.floor((side - height) / 2);
+    const padLeft = Math.floor((side - width) / 2);
+    return await sharp(trimmedBuffer)
+      .extend({
+        top: padTop,
+        bottom: side - height - padTop,
+        left: padLeft,
+        right: side - width - padLeft,
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      })
+      .png()
+      .toBuffer();
+  } catch {
+    // Malformed image, or trim/extend failed for some other reason — fall
+    // back to the original bytes rather than losing the icon entirely.
+    return bytes;
+  }
+}
+
+/** Loads a character icon and re-centers its artwork (see
+ * normalizeIconArtwork). A root-relative `icon_url` (e.g. "/icons/foo.webp")
+ * is read straight off disk from the `public/` directory — a relative path
+ * can't be `fetch()`'d from a Node server-side context without a base URL,
+ * and reading the file directly is also faster than a loopback HTTP round
+ * trip. Anything else (a full http(s) URL, for icons still on an external
+ * host) goes through fetch() as before. Returns null on any failure so a
  * single broken/missing icon degrades to the fallback badge rather than
  * failing the whole PDF. */
 async function loadIconBuffer(url: string | null): Promise<Buffer | null> {
   if (!url) return null;
   try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const bytes = Buffer.from(await res.arrayBuffer());
-    const contentType = res.headers.get("content-type") ?? "";
-    if (contentType.includes("webp") || url.endsWith(".webp")) {
-      return await sharp(bytes).png().toBuffer();
+    let bytes: Buffer;
+    if (url.startsWith("/")) {
+      const filePath = path.join(process.cwd(), "public", url);
+      bytes = await readFile(filePath);
+    } else {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      bytes = Buffer.from(await res.arrayBuffer());
     }
-    return bytes;
+    return await normalizeIconArtwork(bytes);
   } catch {
     return null;
   }
@@ -521,8 +680,6 @@ function IconBadge({
   );
 }
 
-const CHAR_ICON_SIZE = 28;
-
 /** One character's row on the page 1 sheet: its (large) icon on the left,
  * vertically centered against the name+ability text block to its right —
  * the icon sits centered on the left side, between the name and the
@@ -530,21 +687,39 @@ const CHAR_ICON_SIZE = 28;
 function CharacterEntry({
   character,
   icon,
+  scale,
 }: {
   character: Character;
   icon: Buffer | null | undefined;
+  scale: number;
 }) {
+  const iconSize = SHEET_BASE.iconSize * scale;
   return (
-    <View style={styles.charRow} wrap={false}>
-      <View style={styles.charIconWrap}>
-        <IconBadge buffer={icon} fallbackLetter={character.name} size={CHAR_ICON_SIZE} />
+    <View
+      style={[styles.charRow, { marginBottom: SHEET_BASE.rowMarginBottom * scale }]}
+      wrap={false}
+    >
+      <View
+        style={[
+          styles.charIconWrap,
+          { width: iconSize, marginRight: SHEET_BASE.iconMarginRight * scale },
+        ]}
+      >
+        <IconBadge buffer={icon} fallbackLetter={character.name} size={iconSize} />
       </View>
       <View style={styles.charTextWrap}>
-        <Text style={[styles.charName, { color: nameColorFor(character.team) }]}>
+        <Text
+          style={[
+            styles.charName,
+            { color: nameColorFor(character.team), fontSize: SHEET_BASE.nameFontSize * scale },
+          ]}
+        >
           {character.name}
         </Text>
         {character.ability && (
-          <Text style={styles.charAbility}>{character.ability}</Text>
+          <Text style={[styles.charAbility, { fontSize: SHEET_BASE.abilityFontSize * scale }]}>
+            {character.ability}
+          </Text>
         )}
       </View>
     </View>
@@ -599,7 +774,10 @@ function splitColumnsBalancedN<T>(
   for (let i = 1; i <= maxIndex; i++) {
     running += weights[i - 1];
     const diff = Math.abs(running - targetFirst);
-    if (diff < bestDiff) {
+    // On an exact tie, prefer the larger index (more items in the earlier/
+    // left column) — <= instead of < so a later equally-good split point
+    // overwrites the earlier one, keeping the larger share on the left.
+    if (diff <= bestDiff) {
       bestDiff = diff;
       bestIndex = i;
     }
@@ -617,8 +795,8 @@ function splitColumnsBalancedN<T>(
 // block's own line count is compared against, same idea as the "icon
 // height is free next to multi-line text" property this layout is meant to
 // restore.
-const CHARS_PER_ABILITY_LINE = 62;
-const CHAR_ICON_LINES = 3.1;
+const CHARS_PER_ABILITY_LINE = 48;
+const CHAR_ICON_LINES = 4.2;
 
 function estimateCharacterWeight(character: Character): number {
   const abilityLines = character.ability
@@ -628,30 +806,126 @@ function estimateCharacterWeight(character: Character): number {
   return Math.max(textLines, CHAR_ICON_LINES) + 0.3;
 }
 
+/** Predicted rendered height (in points) of one character's row at a given
+ * sheet scale — the same shape of estimate as estimateCharacterWeight
+ * above, but in real units so it can be compared against an actual
+ * available-page-height budget rather than only used to balance columns.
+ * As the font shrinks, more characters fit per wrapped line (the column
+ * width itself doesn't change), so charsPerLine grows as scale shrinks —
+ * this is what lets a smaller scale buy back more than a naive linear
+ * shrink would, without needing real text measurement. */
+function estimateRowHeightAtScale(character: Character, scale: number): number {
+  const iconSize = SHEET_BASE.iconSize * scale;
+  const nameFontSize = SHEET_BASE.nameFontSize * scale;
+  const abilityFontSize = SHEET_BASE.abilityFontSize * scale;
+  const charsPerLine = SHEET_BASE.charsPerAbilityLine / scale;
+  const abilityLines = character.ability
+    ? Math.max(1, Math.ceil(character.ability.length / charsPerLine))
+    : 0;
+  const nameLineHeight = nameFontSize * 1.25;
+  const abilityBlockHeight =
+    abilityLines > 0
+      ? scale /* charAbility's marginTop: 1, scaled */ + abilityLines * abilityFontSize * 1.15
+      : 0;
+  const textHeight = nameLineHeight + abilityBlockHeight;
+  return Math.max(iconSize, textHeight) + SHEET_BASE.rowMarginBottom * scale;
+}
+
+/** Predicted rendered height (in points) of one team section (heading +
+ * its taller column) at a given scale, using the same left/right split
+ * TeamSection actually renders so the estimate matches reality. */
+function estimateTeamSectionHeight(characters: Character[], scale: number): number {
+  if (characters.length === 0) return 0;
+  const [left, right] = splitColumnsBalanced(characters, estimateCharacterWeight);
+  const columnHeight = (column: Character[]) =>
+    column.reduce((sum, c) => sum + estimateRowHeightAtScale(c, scale), 0);
+  const headingHeight =
+    SHEET_BASE.teamHeadingMarginTop * scale +
+    (SHEET_BASE.teamHeadingFontSize * scale * 1.3 + SHEET_BASE.teamHeadingPaddingV * 2 * scale) +
+    SHEET_BASE.teamHeadingMarginBottom * scale;
+  return headingHeight + Math.max(columnHeight(left), columnHeight(right));
+}
+
+/** Picks the largest scale (at most 1, at least SHEET_MIN_SCALE) at which
+ * the whole page-1 character sheet is predicted to fit within the page's
+ * available height, via binary search (the predicted total height is
+ * monotonically non-decreasing in scale, so this is well-defined). This is
+ * what guarantees the character sheet always fits on one page rather than
+ * spilling a handful of characters onto an otherwise-empty second page —
+ * the fixed base sizes above are simply the "comfortable" sizing used
+ * whenever a script's roster is small enough not to need any shrinking. */
+function computeSheetScale(byTeam: { team: Team; characters: Character[] }[]): number {
+  const availableHeight =
+    PAGE_HEIGHT_PT -
+    styles.page.paddingTop -
+    styles.page.paddingBottom -
+    SHEET_HEADER_HEIGHT_ESTIMATE -
+    SHEET_SAFETY_BUFFER;
+
+  const totalHeightAt = (scale: number) =>
+    byTeam.reduce((sum, group) => sum + estimateTeamSectionHeight(group.characters, scale), 0);
+
+  if (totalHeightAt(1) <= availableHeight) return 1;
+  if (totalHeightAt(SHEET_MIN_SCALE) > availableHeight) return SHEET_MIN_SCALE;
+
+  let lo = SHEET_MIN_SCALE;
+  let hi = 1;
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) / 2;
+    if (totalHeightAt(mid) <= availableHeight) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+  return lo;
+}
+
 function TeamSection({
   team,
   characters,
   icons,
+  scale,
 }: {
   team: Team;
   characters: Character[];
   icons: Map<string, Buffer | null>;
+  scale: number;
 }) {
   if (characters.length === 0) return null;
   const [left, right] = splitColumnsBalanced(characters, estimateCharacterWeight);
 
   return (
-    <View wrap={false}>
-      <View style={styles.dividerRow}>
-        <View style={styles.dividerLine} />
-        <Text style={styles.dividerLabel}>{TEAM_LABELS[team].toUpperCase()}</Text>
-        <View style={styles.dividerLine} />
+    <View>
+      <View
+        style={[
+          styles.teamHeadingRow,
+          {
+            marginTop: SHEET_BASE.teamHeadingMarginTop * scale,
+            marginBottom: SHEET_BASE.teamHeadingMarginBottom * scale,
+          },
+        ]}
+        wrap={false}
+      >
+        <Text
+          style={[
+            styles.teamHeading,
+            {
+              fontSize: SHEET_BASE.teamHeadingFontSize * scale,
+              paddingVertical: SHEET_BASE.teamHeadingPaddingV * scale,
+              paddingHorizontal: SHEET_BASE.teamHeadingPaddingH * scale,
+            },
+          ]}
+        >
+          {TEAM_LABELS[team].toUpperCase()}
+        </Text>
+        <View style={styles.teamHeadingRule} />
       </View>
       <View style={styles.teamColumns}>
         {[left, right].map((column, i) => (
           <View key={i} style={styles.teamColumn}>
             {column.map((c) => (
-              <CharacterEntry key={c.id} character={c} icon={icons.get(c.id)} />
+              <CharacterEntry key={c.id} character={c} icon={icons.get(c.id)} scale={scale} />
             ))}
           </View>
         ))}
@@ -874,32 +1148,34 @@ const PLAYER_COUNT_ROWS = [
 
 function PlayerCountTableWide() {
   return (
-    <View style={styles.playerTableWide}>
-      <View style={styles.playerTableWideHeaderRow}>
-        <Text style={styles.playerTableWideHeaderLabelCell}>PLAYERS</Text>
-        {PLAYER_COUNT_TABLE.map((row) => (
-          <Text key={row.players} style={styles.playerTableWideHeaderCell}>
-            {row.players}
-          </Text>
-        ))}
-      </View>
-      {PLAYER_COUNT_ROWS.map((r, i) => (
-        <View
-          key={r.key}
-          style={
-            i === PLAYER_COUNT_ROWS.length - 1
-              ? styles.playerTableWideRowLast
-              : styles.playerTableWideRow
-          }
-        >
-          <Text style={styles.playerTableWideLabelCell}>{r.label}</Text>
+    <View style={styles.playerTableOuter}>
+      <View style={styles.playerTableWide}>
+        <View style={styles.playerTableWideHeaderRow}>
+          <Text style={styles.playerTableWideHeaderLabelCell}>PLAYERS</Text>
           {PLAYER_COUNT_TABLE.map((row) => (
-            <Text key={row.players} style={styles.playerTableWideCell}>
-              {row[r.key]}
+            <Text key={row.players} style={styles.playerTableWideHeaderCell}>
+              {row.players}
             </Text>
           ))}
         </View>
-      ))}
+        {PLAYER_COUNT_ROWS.map((r, i) => (
+          <View
+            key={r.key}
+            style={
+              i === PLAYER_COUNT_ROWS.length - 1
+                ? styles.playerTableWideRowLast
+                : styles.playerTableWideRow
+            }
+          >
+            <Text style={styles.playerTableWideLabelCell}>{r.label}</Text>
+            {PLAYER_COUNT_TABLE.map((row) => (
+              <Text key={row.players} style={styles.playerTableWideCell}>
+                {row[r.key]}
+              </Text>
+            ))}
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
@@ -947,16 +1223,14 @@ function ReferencePage({
           )}
         </View>
 
-        {/* Middle — one combined "Fabled & Jinxes" header (shown only when
-            the script actually has either), then each section that has
+        {/* Middle — one combined "Fabled & Jinxes" header, always shown
+            (even when the script has neither), then each section that has
             content. A small sub-heading only appears when both sections
             are present, to tell them apart — with just one, the combined
             header above already says what it is. The player-count table
             moves to the bottom of the page, full-width, below. */}
         <View style={styles.refColMiddle}>
-          {(hasJinxes || hasFabled) && (
-            <Text style={styles.colHeading}>FABLED & JINXES</Text>
-          )}
+          <Text style={styles.colHeading}>FABLED & JINXES</Text>
 
           {hasJinxes && (
             <>
@@ -1031,6 +1305,7 @@ async function ScriptPdfDocument({
     team,
     characters: characters.filter((c) => c.team === team),
   })).filter((group) => group.characters.length > 0);
+  const sheetScale = computeSheetScale(byTeam);
 
   const fabled = characters.filter(
     (c) => c.team === "fabled" || c.team === "loric",
@@ -1050,14 +1325,19 @@ async function ScriptPdfDocument({
     <Document title={scriptName} author={scriptAuthor ?? undefined}>
       {/* Page 1 — character sheet, every character on the script. */}
       <Page size="A4" style={styles.page}>
-        <Text style={styles.title}>{scriptName}</Text>
-        {scriptAuthor && <Text style={styles.byline}>by {scriptAuthor}</Text>}
+        <View style={styles.sheetHeaderRow}>
+          <Text style={styles.sheetTitle}>{scriptName}</Text>
+          {scriptAuthor && (
+            <Text style={styles.sheetByline}>by {scriptAuthor}</Text>
+          )}
+        </View>
         {byTeam.map(({ team, characters: teamCharacters }) => (
           <TeamSection
             key={team}
             team={team}
             characters={teamCharacters}
             icons={icons}
+            scale={sheetScale}
           />
         ))}
         <Footer scriptName={scriptName} />

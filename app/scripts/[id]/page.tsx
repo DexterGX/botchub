@@ -121,13 +121,53 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
 
       <section className="mt-10">
         <h2 className="text-lg font-semibold">Characters</h2>
+        {script.notes && (
+          <div className="mt-4 rounded-lg border border-black/[.12] bg-zinc-50 px-4 py-3 dark:border-white/[.15] dark:bg-zinc-900">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-500">
+              Notes
+            </h3>
+            <p className="mt-1 whitespace-pre-line text-sm text-zinc-700 dark:text-zinc-300">
+              {script.notes}
+            </p>
+          </div>
+        )}
         <div className="mt-4 space-y-6">
           {byTeam.map(({ team, characters: teamCharacters }) => (
             <div key={team}>
               <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-500">
                 {TEAM_LABELS[team]}
               </h3>
-              <ul className="mt-2 grid gap-x-6 gap-y-3 sm:grid-cols-2">
+              {/* This isn't just a plain 2-col grid: a bare `grid-cols-2`
+                  defaults to row-major auto-placement (item 1 top-left,
+                  item 2 top-right, item 3 second row...), so a reader
+                  scanning left-to-right sees pairs interleaved from what's
+                  visually the "left" and "right" column. The generated PDF
+                  (lib/scriptPdf.tsx's splitColumnsBalanced) instead reads
+                  each column as a contiguous top-to-bottom slice — the
+                  first half of the list down the left column, then the
+                  rest down the right — which is also the standard printed
+                  character-sheet convention. That mismatch was the actual
+                  bug Diego reported ("script starts washerwoman, gossip,
+                  pixie, but the website shows washerwoman, pixie, sailor")
+                  once the underlying array order itself became consistent
+                  (see supabase/migrations/20260913010000_script_character_position.sql)
+                  — both surfaces were reading the identical ordered data,
+                  they just laid it into two columns differently. Setting
+                  `grid-auto-flow: column` with an explicit row count makes
+                  the grid fill top-to-bottom down column 1 first, matching
+                  the PDF's reading order (an even split here rather than
+                  the PDF's weight-balanced one, but the split point matters
+                  far less than which direction the columns read). Only
+                  applied at `sm:` and up — below that it's a single column
+                  already, where reading order isn't in question. */}
+              <ul
+                className="mt-2 grid gap-x-6 gap-y-3 sm:grid-cols-2 sm:[grid-auto-flow:column] sm:[grid-template-rows:repeat(var(--team-rows),minmax(0,1fr))]"
+                style={
+                  {
+                    "--team-rows": Math.ceil(teamCharacters.length / 2),
+                  } as React.CSSProperties
+                }
+              >
                 {teamCharacters.map((c) => (
                   <li key={c.id} className="flex items-start gap-3">
                     <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
@@ -169,26 +209,36 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
       </section>
 
       <section className="mt-10">
-        <h2 className="text-lg font-semibold">Night order</h2>
-        {firstNight.length === 0 && otherNight.length === 0 ? (
-          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-            No character on this script has night-order data yet.
-          </p>
-        ) : (
-          <div className="mt-4 grid gap-8 sm:grid-cols-2">
-            <NightOrderList title="First night" entries={firstNight} />
-            <NightOrderList title="Other nights" entries={otherNight} />
-          </div>
-        )}
-        {missingData.length > 0 && (
-          <p className="mt-4 text-xs text-zinc-500 dark:text-zinc-500">
-            {missingData.length === 1
-              ? `${missingData[0].name} doesn't`
-              : `${missingData.map((c) => c.name).join(", ")} don't`}{" "}
-            have night-order data in BOTChub yet — check the printed script
-            or Script Tool for exact placement.
-          </p>
-        )}
+        {/* Collapsed by default (no `open` attribute) — a native <details>
+            disclosure rather than a client-side toggle, so it needs no JS
+            and stays keyboard/screen-reader accessible for free. Most
+            visitors are here for the character list, not the wake-order
+            reference, so this keeps the page shorter until someone actually
+            wants it. */}
+        <details>
+          <summary className="cursor-pointer text-lg font-semibold marker:text-zinc-400 dark:marker:text-zinc-600">
+            Night order
+          </summary>
+          {firstNight.length === 0 && otherNight.length === 0 ? (
+            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+              No character on this script has night-order data yet.
+            </p>
+          ) : (
+            <div className="mt-4 grid gap-8 sm:grid-cols-2">
+              <NightOrderList title="First night" entries={firstNight} />
+              <NightOrderList title="Other nights" entries={otherNight} />
+            </div>
+          )}
+          {missingData.length > 0 && (
+            <p className="mt-4 text-xs text-zinc-500 dark:text-zinc-500">
+              {missingData.length === 1
+                ? `${missingData[0].name} doesn't`
+                : `${missingData.map((c) => c.name).join(", ")} don't`}{" "}
+              have night-order data in BOTChub yet — check the printed script
+              or Script Tool for exact placement.
+            </p>
+          )}
+        </details>
       </section>
     </main>
   );
