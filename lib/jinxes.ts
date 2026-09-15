@@ -104,3 +104,73 @@ export function resolveJinxesForScript(
 
   return jinxes;
 }
+
+/** For each character that's the *first*-listed side of at least one
+ * resolved jinx, the other character it's jinxed with — used to show a
+ * small icon of the counterpart right next to a character's own name on
+ * the character sheet (both the PDF's CharacterEntry and the website's
+ * team grid), so a player can see at a glance "this character interacts
+ * specially with that one" without having to cross-reference the
+ * separate Jinxes list.
+ *
+ * One-directional on purpose, matching the wiki's own convention (and
+ * Diego's ask): for an "Alchemist & Boffin" jinx, only the Alchemist
+ * shows the Boffin's icon — Boffin doesn't also show the Alchemist's.
+ * `idA`/`nameA` is already "whichever character comes first" for every
+ * jinx source this reads: an inline script jinx's `idA` is the character
+ * whose own `jinxes` array it was listed under, and a DB-sourced jinx's
+ * `character_a_id` preserves the order the wiki's own team-by-team pages
+ * were scraped in (see resolveJinxesForScript / character_jinxes) — both
+ * already match "the same order already shown in the Jinxes list's own
+ * 'A & B' pair heading," so this reuses that instead of re-deriving a
+ * separate direction.
+ *
+ * Only characters resolvable to a known `characters` row (idA/idB
+ * non-null) can be shown this way — an inline jinx referencing an
+ * unresolvable id has nothing to render an icon for. */
+export function buildJinxCounterpartMap(
+  jinxes: JinxEntry[],
+): Map<string, { id: string; name: string }[]> {
+  const map = new Map<string, { id: string; name: string }[]>();
+  const add = (
+    key: string | null,
+    other: { id: string; name: string } | null,
+  ) => {
+    if (!key || !other) return;
+    const list = map.get(key) ?? [];
+    if (!list.some((x) => x.id === other.id)) list.push(other);
+    map.set(key, list);
+  };
+  for (const j of jinxes) {
+    add(j.idA, j.idB ? { id: j.idB, name: j.nameB } : null);
+  }
+  return map;
+}
+
+/**
+ * Many community scripts that carry jinxes lean on the Djinn Fabled
+ * character (ability: "Use the Djinn's special rule. All players know
+ * what it is") as the in-game signal to players that a custom ruling is
+ * active — but a script's own uploaded JSON usually only lists the roles
+ * actually assigned to players, not this implied one, so Djinn often
+ * doesn't come through on upload even when the script clearly has jinxes
+ * (confirmed against several of Diego's own test uploads — "Magical Tea
+ * Party," "Mastication," "Fear of Missing Outsiders" and one of the two
+ * "Babciu..." imports all resolve real jinxes but never listed Djinn).
+ * Per Diego's ask, when a script has any resolvable jinx and its own
+ * character list doesn't already include Djinn, botchub shows the Djinn
+ * badge anyway. This is the one place the app shows a character not
+ * literally present in a script's own data — everywhere else follows a
+ * strict "don't show what isn't there" rule — so it's worth revisiting if
+ * this convention ever turns out not to match what players expect.
+ */
+export function withImpliedDjinn<C extends { character_id: string }>(
+  characters: C[],
+  jinxes: JinxEntry[],
+  djinn: C | null,
+): C[] {
+  if (!djinn) return characters;
+  if (jinxes.length === 0) return characters;
+  if (characters.some((c) => c.character_id === "djinn")) return characters;
+  return [...characters, djinn];
+}

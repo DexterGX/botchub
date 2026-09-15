@@ -22,6 +22,8 @@ import {
 } from "@/lib/nightOrder";
 import {
   resolveJinxesForScript,
+  buildJinxCounterpartMap,
+  withImpliedDjinn,
   type GlobalJinxRow,
   type JinxEntry,
 } from "@/lib/jinxes";
@@ -168,6 +170,7 @@ const SHEET_BASE = {
   charsPerAbilityLine: 48,
   rowMarginBottom: 4,
   iconMarginRight: 6,
+  jinxIconSize: 9,
   teamHeadingMarginTop: 8,
   teamHeadingMarginBottom: 5,
   teamHeadingFontSize: 9,
@@ -346,11 +349,33 @@ const styles = StyleSheet.create({
   charTextWrap: {
     flex: 1,
   },
+  // Wraps the name plus any jinx-counterpart icons (see jinxIndicatorWrap
+  // below) on one line so the icons read as attached to the name they
+  // follow, matching how HeaderFabledBadge pairs an icon with its label.
+  charNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+  },
   charName: {
     fontFamily: "Oswald",
     fontWeight: 700,
     fontSize: 9.5,
     textAlign: "left",
+  },
+  // A character that's part of a resolved jinx gets a small icon of its
+  // counterpart shown right after its name — a quick visual pointer to
+  // "this one interacts specially with that one" without leaving the
+  // character sheet to check the separate Jinxes list. Deliberately
+  // smaller than the main row icon (jinxIconSize vs iconSize) so it reads
+  // as a footnote, not a second character on the row.
+  jinxIndicatorWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: 4,
+  },
+  jinxIndicatorIcon: {
+    marginLeft: 2,
   },
   charAbility: {
     fontFamily: "Oswald",
@@ -787,12 +812,22 @@ function CharacterEntry({
   character,
   icon,
   scale,
+  icons,
+  jinxCounterparts,
 }: {
   character: Character;
   icon: Buffer | null | undefined;
   scale: number;
+  /** Full icon map, so a jinx counterpart's icon (a different character
+   * than this row's own) can be looked up without the caller having to
+   * pre-resolve it. */
+  icons: Map<string, Buffer | null>;
+  /** Other character(s) this one is jinxed with, if any — see
+   * buildJinxCounterpartMap in lib/jinxes.ts. */
+  jinxCounterparts?: { id: string; name: string }[];
 }) {
   const iconSize = SHEET_BASE.iconSize * scale;
+  const jinxIconSize = SHEET_BASE.jinxIconSize * scale;
   return (
     <View
       style={[styles.charRow, { marginBottom: SHEET_BASE.rowMarginBottom * scale }]}
@@ -807,14 +842,29 @@ function CharacterEntry({
         <IconBadge buffer={icon} fallbackLetter={character.name} size={iconSize} />
       </View>
       <View style={styles.charTextWrap}>
-        <Text
-          style={[
-            styles.charName,
-            { color: nameColorFor(character.team), fontSize: SHEET_BASE.nameFontSize * scale },
-          ]}
-        >
-          {character.name}
-        </Text>
+        <View style={styles.charNameRow}>
+          <Text
+            style={[
+              styles.charName,
+              { color: nameColorFor(character.team), fontSize: SHEET_BASE.nameFontSize * scale },
+            ]}
+          >
+            {character.name}
+          </Text>
+          {jinxCounterparts && jinxCounterparts.length > 0 && (
+            <View style={styles.jinxIndicatorWrap}>
+              {jinxCounterparts.map((cp) => (
+                <View key={cp.id} style={styles.jinxIndicatorIcon}>
+                  <IconBadge
+                    buffer={icons.get(cp.id)}
+                    fallbackLetter={cp.name}
+                    size={jinxIconSize}
+                  />
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
         {character.ability && (
           <Text style={[styles.charAbility, { fontSize: SHEET_BASE.abilityFontSize * scale }]}>
             {character.ability}
@@ -985,11 +1035,13 @@ function TeamSection({
   characters,
   icons,
   scale,
+  jinxCounterpartMap,
 }: {
   team: Team;
   characters: Character[];
   icons: Map<string, Buffer | null>;
   scale: number;
+  jinxCounterpartMap: Map<string, { id: string; name: string }[]>;
 }) {
   if (characters.length === 0) return null;
   const [left, right] = splitColumnsBalanced(characters, estimateCharacterWeight);
@@ -1024,7 +1076,14 @@ function TeamSection({
         {[left, right].map((column, i) => (
           <View key={i} style={styles.teamColumn}>
             {column.map((c) => (
-              <CharacterEntry key={c.id} character={c} icon={icons.get(c.id)} scale={scale} />
+              <CharacterEntry
+                key={c.id}
+                character={c}
+                icon={icons.get(c.id)}
+                scale={scale}
+                icons={icons}
+                jinxCounterparts={jinxCounterpartMap.get(c.id)}
+              />
             ))}
           </View>
         ))}
@@ -1449,6 +1508,7 @@ async function ScriptPdfDocument({
   scriptJson,
   globalJinxes,
   bootleggerRules,
+  djinnCharacter = null,
 }: {
   scriptName: string;
   scriptAuthor: string | null;
@@ -1456,29 +1516,42 @@ async function ScriptPdfDocument({
   scriptJson: ScriptJsonEntry[];
   globalJinxes: GlobalJinxRow[];
   bootleggerRules: string[] | null;
+  /** The official Djinn character row, if the caller has one to offer —
+   * see withImpliedDjinn in lib/jinxes.ts. Resolved against this script's
+   * *own* characters/scriptJson (not yet injected), since a script that
+   * already lists Djinn itself shouldn't get a duplicate. */
+  djinnCharacter?: Character | null;
 }) {
   registerFonts();
 
+  // Jinxes are resolved from the script's own data first, before any
+  // implied Djinn is added — otherwise "does this script already list
+  // Djinn" would trivially always be true.
+  const jinxes = resolveJinxesForScript(scriptJson, characters, globalJinxes);
+  const effectiveCharacters = withImpliedDjinn(characters, jinxes, djinnCharacter);
+  const jinxCounterpartMap = buildJinxCounterpartMap(jinxes);
+
   const byTeam = SHEET_TEAM_ORDER.map((team) => ({
     team,
-    characters: characters.filter((c) => c.team === team),
+    characters: effectiveCharacters.filter((c) => c.team === team),
   })).filter((group) => group.characters.length > 0);
   const sheetScale = computeSheetScale(byTeam);
 
   // `fabled` (combined, original array order) feeds the page-1 header
   // badge row; `fabledOnly`/`loricOnly` (split by team) feed their own
-  // separate labeled sub-sections on the Quick Reference page.
-  const fabled = characters.filter(
+  // separate labeled sub-sections on the Quick Reference page. Built from
+  // effectiveCharacters so an implied Djinn shows up everywhere a script's
+  // own Fabled/Loric characters would.
+  const fabled = effectiveCharacters.filter(
     (c) => c.team === "fabled" || c.team === "loric",
   );
-  const fabledOnly = characters.filter((c) => c.team === "fabled");
-  const loricOnly = characters.filter((c) => c.team === "loric");
-  const travellers = characters.filter((c) => c.team === "traveller");
+  const fabledOnly = effectiveCharacters.filter((c) => c.team === "fabled");
+  const loricOnly = effectiveCharacters.filter((c) => c.team === "loric");
+  const travellers = effectiveCharacters.filter((c) => c.team === "traveller");
   const hasBootlegger = Boolean(bootleggerRules && bootleggerRules.length > 0);
 
-  const { firstNight, otherNight } = buildNightOrder(characters);
-  const jinxes = resolveJinxesForScript(scriptJson, characters, globalJinxes);
-  const icons = await loadAllIcons(characters, [...firstNight, ...otherNight]);
+  const { firstNight, otherNight } = buildNightOrder(effectiveCharacters);
+  const icons = await loadAllIcons(effectiveCharacters, [...firstNight, ...otherNight]);
 
   const showReferencePage =
     firstNight.length > 0 ||
@@ -1515,6 +1588,7 @@ async function ScriptPdfDocument({
             characters={teamCharacters}
             icons={icons}
             scale={sheetScale}
+            jinxCounterpartMap={jinxCounterpartMap}
           />
         ))}
         <Footer scriptName={scriptName} />
@@ -1577,6 +1651,7 @@ export async function renderScriptPdf({
   scriptJson,
   globalJinxes = [],
   bootleggerRules = null,
+  djinnCharacter = null,
 }: {
   scriptName: string;
   scriptAuthor: string | null;
@@ -1588,6 +1663,13 @@ export async function renderScriptPdf({
    * need updating; a real script page/PDF route should always pass this. */
   globalJinxes?: GlobalJinxRow[];
   bootleggerRules?: string[] | null;
+  /** The official Djinn character row (lib/queries.ts's
+   * getCharacterByCharacterId("djinn")), auto-included whenever this
+   * script has resolvable jinxes but doesn't already list Djinn itself —
+   * see withImpliedDjinn in lib/jinxes.ts. Optional/defaults to null so
+   * existing callers don't need updating; a real PDF route should pass
+   * this. */
+  djinnCharacter?: Character | null;
 }): Promise<Buffer> {
   const { renderToBuffer } = await import("@react-pdf/renderer");
   const doc = await ScriptPdfDocument({
@@ -1597,6 +1679,7 @@ export async function renderScriptPdf({
     scriptJson,
     globalJinxes,
     bootleggerRules,
+    djinnCharacter,
   });
   return renderToBuffer(doc);
 }
