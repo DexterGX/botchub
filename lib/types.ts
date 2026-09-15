@@ -13,10 +13,47 @@ export type Edition = "tb" | "bmr" | "snv" | null;
 
 export type ScriptType = "full" | "teensyville";
 
+/** A script's character-composition category, distinct from `edition`
+ * (which only ever identifies one of the 3 *official* base scripts
+ * themselves). Auto-detected at upload time from the script's own
+ * characters (see ScriptUploadForm.tsx's client-side heuristic and
+ * lib/script-upload-actions.ts's server-side one, which must agree):
+ * `homebrew` if it introduces any character not in the official library,
+ * `base_three` if every character comes from Trouble Brewing/Bad Moon
+ * Rising/Sects & Violets, `custom` otherwise (mixes in official
+ * Travellers/Fabled/Loric/Carousel characters but nothing truly
+ * homebrew). Always user-overridable before upload. */
+export type ScriptCategory = "base_three" | "custom" | "homebrew";
+
+export const SCRIPT_CATEGORY_LABELS: Record<ScriptCategory, string> = {
+  base_three: "Base Three",
+  custom: "Custom",
+  homebrew: "Homebrew Script",
+};
+
+/** Formats a count for compact display once it's large enough that the
+ * exact figure stops being the point — under 1,500 shows the plain
+ * number, at or above it switches to one-decimal "K" (1.5K, 2.1K),
+ * trimming a trailing ".0" (2.0K -> 2K). */
+export function formatCount(n: number): string {
+  if (n < 1500) return String(n);
+  if (n < 1_000_000) {
+    const k = (n / 1000).toFixed(1).replace(/\.0$/, "");
+    return `${k}K`;
+  }
+  const m = (n / 1_000_000).toFixed(1).replace(/\.0$/, "");
+  return `${m}M`;
+}
+
 export interface Script {
   id: string;
   owner_id: string | null;
   name: string;
+  /** Free-text version label the uploader chooses (e.g. "1.0.0") — purely
+   * display metadata, not parsed or validated as real semver. Defaults to
+   * "1.0.0" for scripts uploaded before this field existed. */
+  version: string;
+  category: ScriptCategory;
   description: string | null;
   /** Free-text script-level notes — homebrew/Bootlegger rule clarifications,
    * Fabled/Loric special-rule reminders, house rules, etc. Shown at the top
@@ -71,6 +108,50 @@ export const SCRIPT_TYPE_LABELS: Record<ScriptType, string> = {
 };
 
 export const SCRIPTS_PAGE_SIZE = 20;
+
+/** How /scripts orders its results — passed straight through to the
+ * search_scripts() SQL function's own p_sort parameter (see
+ * supabase/migrations/20260916000000_search_scripts_sort.sql and
+ * 20260917000000_search_scripts_more_sorts.sql), which does the actual
+ * ordering before pagination. Every column but Actions is clickable on
+ * the browse table (see /scripts's own nextSortFor/sortDirectionFor) —
+ * "newest"/"oldest" are the two that have no column of their own (no
+ * "Date" column), reachable instead via the mobile-only Order By select
+ * (see SCRIPT_SORT_LABELS below, which supplies that select's option
+ * text). */
+export type ScriptSortOrder =
+  | "newest"
+  | "oldest"
+  | "name_asc"
+  | "name_desc"
+  | "author_asc"
+  | "author_desc"
+  | "type_asc"
+  | "type_desc"
+  | "most_views"
+  | "fewest_views"
+  | "most_likes"
+  | "fewest_likes";
+
+export const DEFAULT_SCRIPT_SORT: ScriptSortOrder = "newest";
+
+/** Human-readable label for each ScriptSortOrder value, used by the
+ * mobile-only "Order By" <select> on /scripts (the sm:hidden fallback for
+ * screens too narrow to show the sortable table headers). */
+export const SCRIPT_SORT_LABELS: Record<ScriptSortOrder, string> = {
+  newest: "Newest first",
+  oldest: "Oldest first",
+  name_asc: "Name (A → Z)",
+  name_desc: "Name (Z → A)",
+  author_asc: "Author (A → Z)",
+  author_desc: "Author (Z → A)",
+  type_asc: "Type (A → Z)",
+  type_desc: "Type (Z → A)",
+  most_likes: "Most likes",
+  fewest_likes: "Fewest likes",
+  most_views: "Most views",
+  fewest_views: "Fewest views",
+};
 
 export interface Character {
   id: string;

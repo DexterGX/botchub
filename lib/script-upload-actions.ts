@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { parseScriptUpload } from "@/lib/scriptValidation";
-import type { ScriptType } from "@/lib/types";
+import type { ScriptCategory, ScriptType } from "@/lib/types";
 import type { ProfileActionState } from "@/lib/profile-action-state";
 
 function friendlyError(message: string): string {
@@ -11,18 +11,23 @@ function friendlyError(message: string): string {
 }
 
 const VALID_SCRIPT_TYPES: readonly ScriptType[] = ["full", "teensyville"];
+const VALID_CATEGORIES: readonly ScriptCategory[] = [
+  "base_three",
+  "custom",
+  "homebrew",
+];
+const DEFAULT_VERSION = "1.0.0";
 
-/** Reads the uploaded script JSON from whichever input the visitor used —
- * a real file (works with zero client JS, since a native <input type=file>
- * inside a <form> submits the File object straight through FormData) takes
- * priority over the paste-JSON textarea when both are present. */
+/** Reads the uploaded script JSON from the file input — the upload form
+ * only offers a file picker now (the earlier paste-JSON textarea was
+ * removed), and a native <input type=file> inside a <form> submits the
+ * File object straight through FormData with zero client JS required. */
 async function readScriptJsonText(formData: FormData): Promise<string | null> {
   const file = formData.get("scriptFile");
   if (file instanceof File && file.size > 0) {
     return await file.text();
   }
-  const pasted = String(formData.get("scriptJson") ?? "").trim();
-  return pasted || null;
+  return null;
 }
 
 /**
@@ -62,12 +67,19 @@ export async function uploadScriptAction(
   if (!VALID_SCRIPT_TYPES.includes(scriptType as ScriptType)) {
     return { error: "Choose a valid script type." };
   }
+  const category = String(formData.get("category") ?? "custom");
+  if (!VALID_CATEGORIES.includes(category as ScriptCategory)) {
+    return { error: "Choose a valid category." };
+  }
   const description = String(formData.get("description") ?? "").trim();
   const notes = String(formData.get("notes") ?? "").trim();
+  const formScriptName = String(formData.get("scriptName") ?? "").trim();
+  const formAuthor = String(formData.get("author") ?? "").trim();
+  const version = String(formData.get("version") ?? "").trim() || DEFAULT_VERSION;
 
   const rawText = await readScriptJsonText(formData);
   if (!rawText) {
-    return { error: "Paste your script's JSON or choose a file to upload." };
+    return { error: "Choose a script JSON file to upload." };
   }
 
   const validated = parseScriptUpload(rawText);
@@ -76,6 +88,15 @@ export async function uploadScriptAction(
   }
   const { meta, characters, raw } = validated.value;
   const bootleggerRules = meta.bootleggerRules ?? null;
+
+  // The upload form's own Script Name field is now the authoritative
+  // source (auto-filled from the JSON's _meta.name on file select, but
+  // user-editable) — meta.name is just the fallback for a submit that
+  // somehow skipped that autofill.
+  const scriptName = formScriptName || meta.name;
+  if (!scriptName) {
+    return { error: "Give your script a name." };
+  }
 
   // Resolve every referenced id against the official character library in
   // one query, so we know which entries need a brand-new homebrew
@@ -107,10 +128,11 @@ export async function uploadScriptAction(
     };
   }
 
-  // Attribute the script to the JSON's own credited author if it has one
-  // (uploading someone else's public script should still show their name),
-  // falling back to the uploader's own display_name#tag.
-  let author = meta.author ?? null;
+  // Attribute the script to whatever the uploader put in the form's Author
+  // field (auto-filled from the JSON's own credit when present, but
+  // user-editable), falling back to the JSON's credit directly and then to
+  // the uploader's own display_name#tag.
+  let author = formAuthor || meta.author || null;
   if (!author) {
     const { data: profile } = await supabase
       .from("profiles")
@@ -124,7 +146,9 @@ export async function uploadScriptAction(
     .from("scripts")
     .insert({
       owner_id: user.id,
-      name: meta.name,
+      name: scriptName,
+      version,
+      category,
       description: description || null,
       notes: notes || null,
       script_json: raw,

@@ -20,11 +20,17 @@ export function CharacterFilterDropdown({
   label,
   charactersByTeam,
   initialSelected,
+  className,
 }: {
   name: "include" | "exclude";
   label: string;
   charactersByTeam: { team: Team; characters: Character[] }[];
   initialSelected: string[];
+  /** Extra classes on the outer (positioning) wrapper — e.g. "w-full
+   * sm:w-auto" so the toggle button can go full-width in a mobile grid
+   * layout while staying its normal shrink-to-fit size on wider screens
+   * (the button itself is already `w-full` of whatever this wrapper is). */
+  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -73,12 +79,12 @@ export function CharacterFilterDropdown({
   );
 
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className={`relative ${className ?? ""}`}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex items-center justify-between gap-2 rounded-full border border-black/[.12] bg-white px-4 py-2 text-sm font-medium text-zinc-700 outline-none dark:border-white/[.15] dark:bg-zinc-900 dark:text-zinc-200"
+        className="flex w-full items-center justify-between gap-2 rounded-full border border-black/[.12] bg-white px-4 py-2 text-sm font-medium text-zinc-700 outline-none dark:border-white/[.15] dark:bg-zinc-900 dark:text-zinc-200"
       >
         <span className="inline-flex items-center gap-1.5">
           {label}:{" "}
@@ -89,8 +95,32 @@ export function CharacterFilterDropdown({
         <ChevronIcon />
       </button>
 
+      {/* Backdrop — mobile only. The panel itself switches from an
+          absolute popover anchored to its own button (sm: and up) to a
+          fixed, viewport-centered one below `sm` (see its own comment) —
+          this dims the page behind it so that centered placement reads as
+          a deliberate modal rather than a stray floating box, and gives a
+          second, more obvious way to dismiss it than the existing
+          click-outside listener. */}
+      {open && (
+        <div
+          onClick={() => setOpen(false)}
+          aria-hidden="true"
+          className="fixed inset-0 z-20 bg-black/40 sm:hidden"
+        />
+      )}
+
+      {/* Below `sm`, this panel is fixed and centered in the viewport
+          (translate-based centering, both axes) instead of being
+          absolutely positioned off its own trigger button — anchoring to
+          the button was overflowing off the right edge of the screen
+          whenever that button sat in the right column of the mobile 2-col
+          filter grid (Exclude characters), since a 16rem-wide popover
+          doesn't fit between that button's left edge and the viewport
+          edge. `sm:` and up restores the original anchored-popover
+          behavior unchanged. */}
       <div
-        className={`absolute z-20 mt-2 w-64 rounded-xl border border-black/[.12] bg-white shadow-lg dark:border-white/[.15] dark:bg-zinc-900 ${
+        className={`fixed left-1/2 top-1/2 z-30 max-h-[70vh] w-[calc(100vw-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-xl border border-black/[.12] bg-white shadow-lg dark:border-white/[.15] dark:bg-zinc-900 sm:absolute sm:left-0 sm:top-auto sm:z-20 sm:mt-2 sm:w-64 sm:max-w-none sm:max-h-none sm:translate-x-0 sm:translate-y-0 ${
           open ? "" : "hidden"
         }`}
       >

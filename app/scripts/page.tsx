@@ -1,12 +1,21 @@
 import Link from "next/link";
-import { getOfficialCharactersForFilter, searchScripts } from "@/lib/queries";
 import {
+  getLikedScriptIds,
+  getOfficialCharactersForFilter,
+  searchScripts,
+} from "@/lib/queries";
+import { createClient } from "@/lib/supabase/server";
+import {
+  DEFAULT_SCRIPT_SORT,
+  SCRIPT_SORT_LABELS,
   SCRIPT_TYPE_LABELS,
   TEAM_ORDER,
   truncate,
+  type ScriptSortOrder,
   type ScriptType,
 } from "@/lib/types";
 import { CharacterFilterDropdown } from "./CharacterFilterDropdown";
+import { LikeButton } from "./LikeButton";
 
 export const metadata = {
   title: "Browse scripts — BOTChub",
@@ -19,7 +28,43 @@ interface ScriptsPageSearchParams {
   include?: string | string[];
   exclude?: string | string[];
   page?: string;
+  sort?: string;
 }
+
+const VALID_SORTS: readonly ScriptSortOrder[] = [
+  "newest",
+  "oldest",
+  "name_asc",
+  "name_desc",
+  "author_asc",
+  "author_desc",
+  "type_asc",
+  "type_desc",
+  "most_views",
+  "fewest_views",
+  "most_likes",
+  "fewest_likes",
+];
+
+/** Display order for the mobile "Order By" <select> — Newest/Oldest first
+ * (the two with no column of their own), then each sortable column's
+ * ascending/descending pair in the same left-to-right order the table
+ * shows them (Name, Author, Type, Likes, Views). Distinct from
+ * VALID_SORTS above, which only needs to validate, not present nicely. */
+const SORT_SELECT_ORDER: readonly ScriptSortOrder[] = [
+  "newest",
+  "oldest",
+  "name_asc",
+  "name_desc",
+  "author_asc",
+  "author_desc",
+  "type_asc",
+  "type_desc",
+  "most_likes",
+  "fewest_likes",
+  "most_views",
+  "fewest_views",
+];
 
 interface ScriptsPageProps {
   searchParams: Promise<ScriptsPageSearchParams>;
@@ -48,6 +93,7 @@ function buildHref(
     include: params.include,
     exclude: params.exclude,
     page: params.page,
+    sort: params.sort,
     ...overrides,
   };
 
@@ -60,6 +106,78 @@ function buildHref(
 
   const qsString = qs.toString();
   return qsString ? `/scripts?${qsString}` : "/scripts";
+}
+
+type SortColumn = "name" | "author" | "type" | "likes" | "views";
+
+/** Every sortable column's asc/desc sort values plus which direction a
+ * *first* click on that column should land on — text columns (Name/
+ * Author/Type) start ascending (A→Z reads naturally first), while the
+ * numeric columns (Likes/Views) keep their original highest-first default.
+ * "newest"/"oldest" have no column of their own (no Date column) — they're
+ * reachable only via the mobile Order By pills below. */
+const SORT_COLUMN_VALUES: Record<
+  SortColumn,
+  { asc: ScriptSortOrder; desc: ScriptSortOrder; firstClick: "asc" | "desc" }
+> = {
+  name: { asc: "name_asc", desc: "name_desc", firstClick: "asc" },
+  author: { asc: "author_asc", desc: "author_desc", firstClick: "asc" },
+  type: { asc: "type_asc", desc: "type_desc", firstClick: "asc" },
+  likes: { asc: "fewest_likes", desc: "most_likes", firstClick: "desc" },
+  views: { asc: "fewest_views", desc: "most_views", firstClick: "desc" },
+};
+
+/** Which sort value a click on a sortable column header should go to
+ * next. First click on a column goes to that column's `firstClick`
+ * direction; a second click on the same column flips it; clicking a
+ * different column always starts that column over at its own
+ * `firstClick` direction, regardless of what was active before. */
+function nextSortFor(
+  current: ScriptSortOrder,
+  column: SortColumn,
+): ScriptSortOrder {
+  const { asc, desc, firstClick } = SORT_COLUMN_VALUES[column];
+  if (current === asc) return desc;
+  if (current === desc) return asc;
+  return firstClick === "asc" ? asc : desc;
+}
+
+/** The direction a column header is currently sorted by, or null when
+ * neither of that column's two sort values is active — drives both the
+ * arrow's rotation and whether it's shown in "active" color. */
+function sortDirectionFor(
+  current: ScriptSortOrder,
+  column: SortColumn,
+): "asc" | "desc" | null {
+  const { asc, desc } = SORT_COLUMN_VALUES[column];
+  if (current === asc) return "asc";
+  if (current === desc) return "desc";
+  return null;
+}
+
+/** Small chevron used on a sortable column header — points down by
+ * default (matching "highest first" being the default direction), flips
+ * to point up for "asc", and sits dim/gray until that column is the
+ * active sort so it still reads as a hover affordance rather than noise. */
+function SortArrow({ direction }: { direction: "asc" | "desc" | null }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      className={`h-3 w-3 shrink-0 transition-transform ${
+        direction === "asc" ? "rotate-180" : ""
+      } ${
+        direction
+          ? "text-zinc-700 dark:text-zinc-200"
+          : "text-zinc-300 dark:text-zinc-700"
+      }`}
+      aria-hidden="true"
+    >
+      <path d="M5 7.5l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 function DownloadIcon() {
@@ -120,25 +238,6 @@ function EditIcon() {
   );
 }
 
-function HeartIcon() {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.5}
-      className="h-3.5 w-3.5 shrink-0 text-zinc-400 dark:text-zinc-600"
-      aria-hidden="true"
-    >
-      <path
-        d="M10 17s-6-4-6-8.5A3.5 3.5 0 0110 6a3.5 3.5 0 016 2.5C16 13 10 17 10 17z"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 function EyeIcon() {
   return (
     <svg
@@ -173,8 +272,19 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
   const include = toArray(params.include);
   const exclude = toArray(params.exclude);
   const page = Math.max(1, parseInt(params.page ?? "1", 10) || 1);
+  const sort = VALID_SORTS.includes(params.sort as ScriptSortOrder)
+    ? (params.sort as ScriptSortOrder)
+    : DEFAULT_SCRIPT_SORT;
 
-  const [{ scripts, totalCount, totalPages }, characters] = await Promise.all([
+  const supabase = await createClient();
+  const [
+    {
+      data: { user },
+    },
+    { scripts, totalCount, totalPages },
+    characters,
+  ] = await Promise.all([
+    supabase.auth.getUser(),
     searchScripts({
       q: q || undefined,
       type,
@@ -182,9 +292,19 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
       includeCharacterIds: include,
       excludeCharacterIds: exclude,
       page,
+      sort,
     }),
     getOfficialCharactersForFilter(),
   ]);
+
+  // One query for every liked/not-liked state on this page, rather than
+  // one per row — cheap since a page is at most SCRIPTS_PAGE_SIZE scripts.
+  const likedIds = user
+    ? await getLikedScriptIds(
+        user.id,
+        scripts.map((s) => s.id),
+      )
+    : new Set<string>();
 
   const charactersByTeam = TEAM_ORDER.map((team) => ({
     team,
@@ -192,7 +312,12 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
   })).filter((group) => group.characters.length > 0);
 
   const hasFilters = Boolean(
-    q || type || author || include.length > 0 || exclude.length > 0,
+    q ||
+      type ||
+      author ||
+      include.length > 0 ||
+      exclude.length > 0 ||
+      sort !== DEFAULT_SCRIPT_SORT,
   );
 
   return (
@@ -203,6 +328,16 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
         {hasFilters ? " matching your filters" : ""}
       </p>
 
+      {/* Below `sm`, every control goes full-width in a 2-column grid
+          (Author+Game, Include+Exclude, Order By, Filter+Clear) instead of
+          the single-file stack a plain flex-wrap row produces on a narrow
+          screen — `sm:contents` on each grouping wrapper below then
+          dissolves it back into the normal flex-wrap row at `sm:` and up,
+          where these pills have always fit several to a line. On `sm` and
+          up, sorting instead lives on the clickable column headers below
+          — the mobile-only "Order By" <select> further down doubles as
+          that sort value's carrier at every width (see its own comment),
+          so there's no separate hidden input for it here. */}
       <form className="mt-6" action="/scripts">
         <input
           type="search"
@@ -212,11 +347,19 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
           className="w-full rounded-full border border-black/[.12] bg-white px-5 py-3 text-sm outline-none focus:border-zinc-400 dark:border-white/[.15] dark:bg-zinc-900"
         />
 
-        <div className="mt-4 flex flex-wrap items-start gap-3">
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-start">
+          <input
+            type="text"
+            name="author"
+            defaultValue={author}
+            placeholder="Author: any"
+            className="w-full rounded-full border border-black/[.12] bg-white px-4 py-2 text-sm outline-none sm:w-40 dark:border-white/[.15] dark:bg-zinc-900"
+          />
+
           <select
             name="type"
             defaultValue={type ?? ""}
-            className="rounded-full border border-black/[.12] bg-white px-4 py-2 text-sm font-medium text-zinc-700 outline-none dark:border-white/[.15] dark:bg-zinc-900 dark:text-zinc-200"
+            className="w-full rounded-full border border-black/[.12] bg-white px-4 py-2 text-sm font-medium text-zinc-700 outline-none sm:w-auto dark:border-white/[.15] dark:bg-zinc-900 dark:text-zinc-200"
           >
             <option value="">Game: Any</option>
             <option value="full">Game: {SCRIPT_TYPE_LABELS.full}</option>
@@ -225,41 +368,75 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
             </option>
           </select>
 
-          <input
-            type="text"
-            name="author"
-            defaultValue={author}
-            placeholder="Author: any"
-            className="w-40 rounded-full border border-black/[.12] bg-white px-4 py-2 text-sm outline-none focus:border-zinc-400 dark:border-white/[.15] dark:bg-zinc-900"
-          />
+          <div className="col-span-2 grid grid-cols-2 gap-3 sm:contents">
+            <CharacterFilterDropdown
+              name="include"
+              label="Include characters"
+              charactersByTeam={charactersByTeam}
+              initialSelected={include}
+              className="w-full sm:w-auto"
+            />
+            <CharacterFilterDropdown
+              name="exclude"
+              label="Exclude characters"
+              charactersByTeam={charactersByTeam}
+              initialSelected={exclude}
+              className="w-full sm:w-auto"
+            />
+          </div>
 
-          <CharacterFilterDropdown
-            name="include"
-            label="Include characters"
-            charactersByTeam={charactersByTeam}
-            initialSelected={include}
-          />
-          <CharacterFilterDropdown
-            name="exclude"
-            label="Exclude characters"
-            charactersByTeam={charactersByTeam}
-            initialSelected={exclude}
-          />
-
-          <button
-            type="submit"
-            className="rounded-full bg-foreground px-5 py-2 text-sm font-medium text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc]"
-          >
-            Filter
-          </button>
-          {hasFilters && (
-            <Link
-              href="/scripts"
-              className="rounded-full border border-black/[.12] px-5 py-2 text-sm font-medium transition-colors hover:border-zinc-400 dark:border-white/[.15] dark:hover:border-zinc-600"
+          {/* Mobile-only — the table's clickable column headers (Name/
+              Author/Type/Likes/Views) don't exist in the card layout below
+              `sm`, so this <select> is the only way to reach a non-default
+              sort on a phone, styled to match the Game <select> above per
+              Diego's request. It's also the "sort" field for the *whole*
+              form, at every width, not just when visible: `sm:hidden` on
+              this wrapper only changes CSS display, so at `sm` and up the
+              select still sits in the DOM (with its value pinned to the
+              sort currently active via header-link clicks) and still
+              submits normally — a hidden form field doesn't need the
+              `hidden` HTML attribute to submit, just a `name`. That's what
+              lets a desktop Filter click carry the active sort through
+              without a second, separately-named hidden input (which would
+              have collided with this select's own `name="sort"` and sent
+              two values for one param). */}
+          <div className="col-span-2 flex items-center gap-2 sm:hidden">
+            <label
+              htmlFor="mobile-sort"
+              className="shrink-0 text-sm font-medium text-zinc-600 dark:text-zinc-400"
             >
-              Clear
-            </Link>
-          )}
+              Order By:
+            </label>
+            <select
+              id="mobile-sort"
+              name="sort"
+              defaultValue={sort}
+              className="w-full flex-1 rounded-full border border-black/[.12] bg-white px-4 py-2 text-sm font-medium text-zinc-700 outline-none dark:border-white/[.15] dark:bg-zinc-900 dark:text-zinc-200"
+            >
+              {SORT_SELECT_ORDER.map((value) => (
+                <option key={value} value={value}>
+                  {SCRIPT_SORT_LABELS[value]}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="col-span-2 flex gap-3 sm:contents">
+            <button
+              type="submit"
+              className="flex-1 rounded-full bg-foreground px-5 py-2 text-sm font-medium text-background transition-colors hover:bg-[#383838] sm:flex-none dark:hover:bg-[#ccc]"
+            >
+              Filter
+            </button>
+            {hasFilters && (
+              <Link
+                href="/scripts"
+                className="flex-1 rounded-full border border-black/[.12] px-5 py-2 text-center text-sm font-medium transition-colors hover:border-zinc-400 sm:flex-none dark:border-white/[.15] dark:hover:border-zinc-600"
+              >
+                Clear
+              </Link>
+            )}
+          </div>
         </div>
       </form>
 
@@ -304,10 +481,12 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
 
                 <div className="mt-3 flex items-center justify-between gap-3">
                   <span className="flex shrink-0 items-center gap-3 text-sm text-zinc-600 dark:text-zinc-400">
-                    <span className="inline-flex items-center gap-1">
-                      <HeartIcon />
-                      {script.like_count}
-                    </span>
+                    <LikeButton
+                      scriptId={script.id}
+                      initialLiked={likedIds.has(script.id)}
+                      initialCount={script.like_count}
+                      isLoggedIn={Boolean(user)}
+                    />
                     <span className="inline-flex items-center gap-1">
                       <EyeIcon />
                       {script.view_count}
@@ -356,11 +535,68 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
               </colgroup>
               <thead>
                 <tr className="border-b border-black/[.08] text-xs uppercase tracking-wide text-zinc-500 dark:border-white/[.145] dark:text-zinc-500">
-                  <th className="px-4 py-3 font-semibold">Name</th>
-                  <th className="px-4 py-3 font-semibold">Author</th>
-                  <th className="px-4 py-3 font-semibold">Type</th>
-                  <th className="px-4 py-3 font-semibold">Likes</th>
-                  <th className="px-4 py-3 font-semibold">Views</th>
+                  <th className="px-4 py-3 font-semibold">
+                    <Link
+                      href={buildHref(params, {
+                        sort: nextSortFor(sort, "name"),
+                        page: null,
+                      })}
+                      className="inline-flex items-center gap-1 hover:text-zinc-900 dark:hover:text-zinc-200"
+                    >
+                      Name
+                      <SortArrow direction={sortDirectionFor(sort, "name")} />
+                    </Link>
+                  </th>
+                  <th className="px-4 py-3 font-semibold">
+                    <Link
+                      href={buildHref(params, {
+                        sort: nextSortFor(sort, "author"),
+                        page: null,
+                      })}
+                      className="inline-flex items-center gap-1 hover:text-zinc-900 dark:hover:text-zinc-200"
+                    >
+                      Author
+                      <SortArrow
+                        direction={sortDirectionFor(sort, "author")}
+                      />
+                    </Link>
+                  </th>
+                  <th className="px-4 py-3 font-semibold">
+                    <Link
+                      href={buildHref(params, {
+                        sort: nextSortFor(sort, "type"),
+                        page: null,
+                      })}
+                      className="inline-flex items-center gap-1 hover:text-zinc-900 dark:hover:text-zinc-200"
+                    >
+                      Type
+                      <SortArrow direction={sortDirectionFor(sort, "type")} />
+                    </Link>
+                  </th>
+                  <th className="px-4 py-3 font-semibold">
+                    <Link
+                      href={buildHref(params, {
+                        sort: nextSortFor(sort, "likes"),
+                        page: null,
+                      })}
+                      className="inline-flex items-center gap-1 hover:text-zinc-900 dark:hover:text-zinc-200"
+                    >
+                      Likes
+                      <SortArrow direction={sortDirectionFor(sort, "likes")} />
+                    </Link>
+                  </th>
+                  <th className="px-4 py-3 font-semibold">
+                    <Link
+                      href={buildHref(params, {
+                        sort: nextSortFor(sort, "views"),
+                        page: null,
+                      })}
+                      className="inline-flex items-center gap-1 hover:text-zinc-900 dark:hover:text-zinc-200"
+                    >
+                      Views
+                      <SortArrow direction={sortDirectionFor(sort, "views")} />
+                    </Link>
+                  </th>
                   <th className="px-4 py-3 font-semibold">Actions</th>
                 </tr>
               </thead>
@@ -390,10 +626,12 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
                       {SCRIPT_TYPE_LABELS[script.script_type]}
                     </td>
                     <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
-                      <span className="inline-flex items-center gap-1">
-                        <HeartIcon />
-                        {script.like_count}
-                      </span>
+                      <LikeButton
+                        scriptId={script.id}
+                        initialLiked={likedIds.has(script.id)}
+                        initialCount={script.like_count}
+                        isLoggedIn={Boolean(user)}
+                      />
                     </td>
                     <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
                       <span className="inline-flex items-center gap-1">
