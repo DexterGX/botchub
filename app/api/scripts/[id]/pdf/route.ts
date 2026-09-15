@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  getCharacterByCharacterId,
   getCharactersForScript,
   getJinxesForCharacterIds,
   getScriptById,
@@ -23,6 +24,12 @@ export async function GET(
 
   const characters = await getCharactersForScript(id);
   const globalJinxes = await getJinxesForCharacterIds(characters.map((c) => c.id));
+  // Fetched unconditionally on every request rather than gated on "does
+  // this script have jinxes" — that check needs scriptJson/characters/
+  // globalJinxes together anyway (see resolveJinxesForScript), so it's
+  // simpler to always have Djinn on hand and let withImpliedDjinn (called
+  // inside renderScriptPdf) decide whether to use it.
+  const djinnCharacter = await getCharacterByCharacterId("djinn");
   const meta = script.script_json.find(isMetaEntry) as
     ScriptJsonMeta | undefined;
   const scriptName = meta?.name || script.name;
@@ -37,6 +44,7 @@ export async function GET(
       scriptJson: script.script_json,
       globalJinxes,
       bootleggerRules: script.bootlegger_rules,
+      djinnCharacter,
     });
   } catch (error) {
     console.error("PDF generation failed", error);

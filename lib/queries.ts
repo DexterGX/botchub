@@ -160,6 +160,28 @@ export async function getJinxesForCharacterIds(
   }));
 }
 
+/** A single official character by its script-json id (e.g. "djinn") —
+ * used to auto-include Djinn on scripts that have resolvable jinxes but
+ * didn't literally list Djinn in their own uploaded data (see
+ * withImpliedDjinn in lib/jinxes.ts for why). `maybeSingle` rather than
+ * `single` since a lookup that finds nothing (id typo'd, or the
+ * characters table not seeded yet in some environment) should return
+ * null, not throw. */
+export async function getCharacterByCharacterId(
+  characterId: string,
+): Promise<Character | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("characters")
+    .select("*")
+    .eq("character_id", characterId)
+    .eq("is_homebrew", false)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data as Character | null;
+}
+
 /** Official characters only, grouped for a filter dropdown — cheap enough to
  * fetch in full since there are only ~130 of them. Ordered by team then
  * name only (not edition first) so each team group reads as one clean

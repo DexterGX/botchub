@@ -3,13 +3,18 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
+  getCharacterByCharacterId,
   getCharactersForScript,
   getJinxesForCharacterIds,
   getScriptById,
   incrementScriptViewCount,
 } from "@/lib/queries";
 import { buildNightOrder, type NightOrderEntry } from "@/lib/nightOrder";
-import { resolveJinxesForScript } from "@/lib/jinxes";
+import {
+  buildJinxCounterpartMap,
+  resolveJinxesForScript,
+  withImpliedDjinn,
+} from "@/lib/jinxes";
 import { buildScriptToolUrl } from "@/lib/scriptTool";
 import {
   TEAM_LABELS,
@@ -58,9 +63,21 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
     ScriptJsonMeta | undefined;
   const author = meta?.author;
 
+  // Jinxes are resolved from the script's own data first, before any
+  // implied Djinn is added — otherwise "does this script already list
+  // Djinn" would trivially always be true. See withImpliedDjinn in
+  // lib/jinxes.ts for why an unlisted Djinn gets added at all: many
+  // community scripts lean on it as the in-game signal that custom jinx
+  // rulings are active, but don't actually list it among their own roles.
+  const globalJinxes = await getJinxesForCharacterIds(characters.map((c) => c.id));
+  const jinxes = resolveJinxesForScript(script.script_json, characters, globalJinxes);
+  const djinnCharacter = await getCharacterByCharacterId("djinn");
+  const effectiveCharacters = withImpliedDjinn(characters, jinxes, djinnCharacter);
+  const jinxCounterpartMap = buildJinxCounterpartMap(jinxes);
+
   const byTeam = SHEET_TEAM_ORDER.map((team) => ({
     team,
-    characters: characters.filter((c) => c.team === team),
+    characters: effectiveCharacters.filter((c) => c.team === team),
   })).filter((group) => group.characters.length > 0);
 
   // Fabled/Loric aren't assigned to a player — they're script-wide rule
@@ -68,15 +85,15 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
   // page-1 header treatment, lib/scriptPdf.tsx's HeaderFabledBadge), they
   // show as compact badges up near the title rather than as their own
   // full team section further down the page.
-  const fabled = characters.filter(
+  const fabled = effectiveCharacters.filter(
     (c) => c.team === "fabled" || c.team === "loric",
   );
 
-  const globalJinxes = await getJinxesForCharacterIds(characters.map((c) => c.id));
-  const jinxes = resolveJinxesForScript(script.script_json, characters, globalJinxes);
-  const iconByCharacterId = new Map(characters.map((c) => [c.id, c.icon_url]));
+  const iconByCharacterId = new Map(
+    effectiveCharacters.map((c) => [c.id, c.icon_url]),
+  );
 
-  const { firstNight, otherNight, missingData } = buildNightOrder(characters);
+  const { firstNight, otherNight, missingData } = buildNightOrder(effectiveCharacters);
 
   const jsonUrl = `/api/scripts/${script.id}/json`;
   const scriptToolUrl = buildScriptToolUrl(script.script_json);
@@ -226,13 +243,28 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
                       )}
                     </div>
                     <div>
-                      <div className="font-medium">
+                      <div className="flex flex-wrap items-center gap-1.5 font-medium">
                         {c.name}
                         {c.is_homebrew && (
-                          <span className="ml-2 rounded-full bg-zinc-200 px-2 py-0.5 text-xs font-normal text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+                          <span className="rounded-full bg-zinc-200 px-2 py-0.5 text-xs font-normal text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
                             Homebrew
                           </span>
                         )}
+                        {/* A small icon of each character this one is
+                            jinxed with, right next to its name — a quick
+                            visual pointer to the special interaction
+                            without having to jump down to the separate
+                            Jinxes section. Matches the PDF's page-1
+                            treatment (lib/scriptPdf.tsx's
+                            jinxIndicatorWrap). */}
+                        {jinxCounterpartMap.get(c.id)?.map((cp) => (
+                          <JinxIcon
+                            key={cp.id}
+                            iconUrl={iconByCharacterId.get(cp.id) ?? null}
+                            name={cp.name}
+                            small
+                          />
+                        ))}
                       </div>
                       {c.ability && (
                         <p className="mt-0.5 text-sm text-zinc-600 dark:text-zinc-400">
@@ -386,16 +418,33 @@ function FabledBadge({ character }: { character: Character }) {
   );
 }
 
-function JinxIcon({ iconUrl, name }: { iconUrl: string | null; name: string }) {
+function JinxIcon({
+  iconUrl,
+  name,
+  small,
+}: {
+  iconUrl: string | null;
+  name: string;
+  /** The compact size used as a per-character indicator next to a name
+   * (team grid) rather than the larger overlapping-pair badge used in the
+   * Jinxes section itself. */
+  small?: boolean;
+}) {
+  const size = small ? 16 : 28;
   return (
-    <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border-2 border-white bg-zinc-100 dark:border-zinc-950 dark:bg-zinc-800">
+    <div
+      className="flex shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white bg-zinc-100 dark:border-zinc-950 dark:bg-zinc-800"
+      style={{ width: size, height: size }}
+      title={`Jinxed with ${name}`}
+    >
       {iconUrl ? (
         <Image
           src={iconUrl}
-          alt=""
-          width={28}
-          height={28}
-          className="h-7 w-7 object-contain"
+          alt={`Jinxed with ${name}`}
+          width={size}
+          height={size}
+          className="object-contain"
+          style={{ width: size, height: size }}
         />
       ) : (
         <span className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-600">
