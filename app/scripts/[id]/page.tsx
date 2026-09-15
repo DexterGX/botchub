@@ -6,9 +6,12 @@ import {
   getCharacterByCharacterId,
   getCharactersForScript,
   getJinxesForCharacterIds,
+  getLikedScriptIds,
   getScriptById,
+  getScriptLikeCount,
   incrementScriptViewCount,
 } from "@/lib/queries";
+import { createClient } from "@/lib/supabase/server";
 import { buildNightOrder, type NightOrderEntry } from "@/lib/nightOrder";
 import {
   buildJinxCounterpartMap,
@@ -17,13 +20,15 @@ import {
 } from "@/lib/jinxes";
 import { buildScriptToolUrl } from "@/lib/scriptTool";
 import {
+  SCRIPT_CATEGORY_LABELS,
   TEAM_LABELS,
   TEAM_ORDER,
-  editionLabel,
+  formatCount,
   isMetaEntry,
   type Character,
   type ScriptJsonMeta,
 } from "@/lib/types";
+import { LikeButton } from "../LikeButton";
 
 const SHEET_TEAM_ORDER = TEAM_ORDER.filter(
   (t) => t !== "fabled" && t !== "loric",
@@ -58,7 +63,13 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
   // Best-effort — a failed view-count bump should never break the page.
   incrementScriptViewCount(id).catch(() => {});
 
-  const characters = await getCharactersForScript(id);
+  const supabase = await createClient();
+  const [characters, likeCount, { data: { user } }] = await Promise.all([
+    getCharactersForScript(id),
+    getScriptLikeCount(id),
+    supabase.auth.getUser(),
+  ]);
+  const liked = user ? (await getLikedScriptIds(user.id, [id])).has(id) : false;
   const meta = script.script_json.find(isMetaEntry) as
     ScriptJsonMeta | undefined;
   const author = meta?.author;
@@ -107,24 +118,42 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
         ← All scripts
       </Link>
 
-      <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight">
-            {script.name}
-          </h1>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-            {editionLabel(script.edition)}
-            {author ? ` · by ${author}` : ""} · {script.view_count} view
-            {script.view_count === 1 ? "" : "s"}
+      <div className="mt-4 flex flex-wrap items-start justify-between gap-6">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+              {script.name}
+            </h1>
+            <span className="text-base font-medium text-zinc-500 dark:text-zinc-500 sm:text-lg">
+              v{script.version}
+            </span>
+          </div>
+          <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-zinc-600 dark:text-zinc-400">
+            {author && <span>by {author}</span>}
+            {author && <span aria-hidden="true">·</span>}
+            <span className="rounded-full border border-black/[.12] px-2.5 py-0.5 text-xs font-medium dark:border-white/[.15]">
+              {SCRIPT_CATEGORY_LABELS[script.category]}
+            </span>
           </p>
         </div>
-        {fabled.length > 0 && (
-          <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
-            {fabled.map((c) => (
-              <FabledBadge key={c.id} character={c} />
-            ))}
-          </div>
-        )}
+
+        <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+          <LikeButton
+            scriptId={script.id}
+            initialLiked={liked}
+            initialCount={likeCount}
+            isLoggedIn={Boolean(user)}
+            variant="stack"
+          />
+          <StatStack icon={<EyeIcon />} count={script.view_count} label="views" />
+          {fabled.length > 0 && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 sm:border-l sm:border-black/[.08] sm:pl-6 sm:dark:border-white/[.12]">
+              {fabled.map((c) => (
+                <FabledBadge key={c.id} character={c} />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {script.description && (
@@ -226,24 +255,24 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
                 }
               >
                 {teamCharacters.map((c) => (
-                  <li key={c.id} className="flex items-start gap-3">
-                    <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                  <li key={c.id} className="flex items-start gap-4">
+                    <div className="mt-0.5 flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
                       {c.icon_url ? (
                         <Image
                           src={c.icon_url}
                           alt=""
-                          width={40}
-                          height={40}
-                          className="h-10 w-10 object-contain"
+                          width={56}
+                          height={56}
+                          className="h-14 w-14 object-contain"
                         />
                       ) : (
-                        <span className="text-xs font-semibold text-zinc-400 dark:text-zinc-600">
+                        <span className="text-base font-semibold text-zinc-400 dark:text-zinc-600">
                           {c.name.slice(0, 1)}
                         </span>
                       )}
                     </div>
                     <div>
-                      <div className="flex flex-wrap items-center gap-1.5 font-medium">
+                      <div className="flex flex-wrap items-center gap-1.5 text-lg font-semibold">
                         {c.name}
                         {c.is_homebrew && (
                           <span className="rounded-full bg-zinc-200 px-2 py-0.5 text-xs font-normal text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
@@ -267,7 +296,7 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
                         ))}
                       </div>
                       {c.ability && (
-                        <p className="mt-0.5 text-sm text-zinc-600 dark:text-zinc-400">
+                        <p className="mt-0.5 text-base text-zinc-600 dark:text-zinc-400">
                           {c.ability}
                         </p>
                       )}
@@ -291,28 +320,28 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
           <h2 className="text-lg font-semibold">Fabled &amp; Loric</h2>
           <ul className="mt-4 space-y-4">
             {fabled.map((c) => (
-              <li key={c.id} className="flex items-start gap-3">
-                <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-amber-100 dark:bg-amber-950/40">
+              <li key={c.id} className="flex items-start gap-4">
+                <div className="mt-0.5 flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-amber-100 dark:bg-amber-950/40">
                   {c.icon_url ? (
                     <Image
                       src={c.icon_url}
                       alt=""
-                      width={40}
-                      height={40}
-                      className="h-10 w-10 object-contain"
+                      width={56}
+                      height={56}
+                      className="h-14 w-14 object-contain"
                     />
                   ) : (
-                    <span className="text-xs font-semibold text-amber-700 dark:text-amber-500">
+                    <span className="text-base font-semibold text-amber-700 dark:text-amber-500">
                       {c.name.slice(0, 1)}
                     </span>
                   )}
                 </div>
                 <div>
-                  <div className="font-medium text-amber-800 dark:text-amber-500">
+                  <div className="text-lg font-semibold text-amber-800 dark:text-amber-500">
                     {c.name}
                   </div>
                   {c.ability && (
-                    <p className="mt-0.5 text-sm text-zinc-600 dark:text-zinc-400">
+                    <p className="mt-0.5 text-base text-zinc-600 dark:text-zinc-400">
                       {c.ability}
                     </p>
                   )}
@@ -393,6 +422,53 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
   );
 }
 
+/** Icon-above-count widget used for the likes/views stats next to the
+ * title — matching the header treatment Diego asked for (icon on top,
+ * number underneath, compact-formatted via formatCount once a script gets
+ * popular enough that the exact figure stops being the point). */
+function StatStack({
+  icon,
+  count,
+  label,
+}: {
+  icon: React.ReactNode;
+  count: number;
+  label: string;
+}) {
+  return (
+    <div
+      className="flex flex-col items-center"
+      title={`${count.toLocaleString()} ${label}`}
+    >
+      {icon}
+      <span className="mt-1 text-sm font-semibold tabular-nums text-zinc-600 dark:text-zinc-400">
+        {formatCount(count)}
+      </span>
+    </div>
+  );
+}
+
+/** Same path data as the EyeIcon on /scripts (app/scripts/page.tsx). */
+function EyeIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      className="h-5 w-5 shrink-0 text-zinc-400 dark:text-zinc-600"
+      aria-hidden="true"
+    >
+      <path
+        d="M1.5 10S4.5 4.5 10 4.5 18.5 10 18.5 10 15.5 15.5 10 15.5 1.5 10 1.5 10z"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="10" cy="10" r="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function FabledBadge({ character }: { character: Character }) {
   return (
     <div className="flex items-center gap-2">
@@ -430,7 +506,7 @@ function JinxIcon({
    * Jinxes section itself. */
   small?: boolean;
 }) {
-  const size = small ? 16 : 28;
+  const size = small ? 22 : 32;
   return (
     <div
       className="flex shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white bg-zinc-100 dark:border-zinc-950 dark:bg-zinc-800"

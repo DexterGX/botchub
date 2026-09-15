@@ -48,51 +48,54 @@ export default async function CharactersPage({
         {characters.length} character{characters.length === 1 ? "" : "s"}
       </p>
 
-      <form className="mt-6 flex flex-wrap gap-3" action="/characters">
+      <form className="mt-6" action="/characters">
         <input
           type="search"
           name="q"
           defaultValue={q ?? ""}
           placeholder="Search by name or ability…"
-          className="min-w-0 flex-1 rounded-full border border-black/[.12] bg-white px-4 py-2 text-sm outline-none focus:border-zinc-400 dark:border-white/[.15] dark:bg-zinc-900"
+          className="w-full rounded-full border border-black/[.12] bg-white px-4 py-2 text-sm outline-none focus:border-zinc-400 dark:border-white/[.15] dark:bg-zinc-900"
         />
-        <select
-          name="team"
-          defaultValue={team ?? ""}
-          className="rounded-full border border-black/[.12] bg-white px-4 py-2 text-sm outline-none focus:border-zinc-400 dark:border-white/[.15] dark:bg-zinc-900"
-        >
-          <option value="">Any team</option>
-          {TEAM_ORDER.map((t) => (
-            <option key={t} value={t}>
-              {TEAM_LABELS[t]}
-            </option>
-          ))}
-        </select>
-        <select
-          name="edition"
-          defaultValue={edition ?? ""}
-          className="rounded-full border border-black/[.12] bg-white px-4 py-2 text-sm outline-none focus:border-zinc-400 dark:border-white/[.15] dark:bg-zinc-900"
-        >
-          {EDITION_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-        <button
-          type="submit"
-          className="rounded-full bg-foreground px-5 py-2 text-sm font-medium text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc]"
-        >
-          Filter
-        </button>
-        {(q || team || edition) && (
-          <Link
-            href="/characters"
-            className="rounded-full border border-black/[.12] px-5 py-2 text-sm font-medium transition-colors hover:border-zinc-400 dark:border-white/[.15] dark:hover:border-zinc-600"
+
+        <div className="mt-3 flex flex-wrap gap-3">
+          <select
+            name="team"
+            defaultValue={team ?? ""}
+            className="rounded-full border border-black/[.12] bg-white px-4 py-2 text-sm outline-none focus:border-zinc-400 dark:border-white/[.15] dark:bg-zinc-900"
           >
-            Clear
-          </Link>
-        )}
+            <option value="">Any team</option>
+            {TEAM_ORDER.map((t) => (
+              <option key={t} value={t}>
+                {TEAM_LABELS[t]}
+              </option>
+            ))}
+          </select>
+          <select
+            name="edition"
+            defaultValue={edition ?? ""}
+            className="rounded-full border border-black/[.12] bg-white px-4 py-2 text-sm outline-none focus:border-zinc-400 dark:border-white/[.15] dark:bg-zinc-900"
+          >
+            {EDITION_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="submit"
+            className="rounded-full bg-foreground px-5 py-2 text-sm font-medium text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc]"
+          >
+            Filter
+          </button>
+          {(q || team || edition) && (
+            <Link
+              href="/characters"
+              className="rounded-full border border-black/[.12] px-5 py-2 text-sm font-medium transition-colors hover:border-zinc-400 dark:border-white/[.15] dark:hover:border-zinc-600"
+            >
+              Clear
+            </Link>
+          )}
+        </div>
       </form>
 
       {characters.length === 0 ? (

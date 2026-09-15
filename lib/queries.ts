@@ -3,6 +3,7 @@ import type {
   Character,
   Script,
   ScriptSearchRow,
+  ScriptSortOrder,
   ScriptType,
   Team,
   Edition,
@@ -33,6 +34,8 @@ export interface ScriptSearchParams {
   excludeCharacterIds?: string[];
   /** 1-indexed page number. */
   page?: number;
+  /** Defaults to "newest" (search_scripts()'s own default) when omitted. */
+  sort?: ScriptSortOrder;
 }
 
 export interface ScriptSearchResult {
@@ -55,6 +58,7 @@ export async function searchScripts({
   includeCharacterIds,
   excludeCharacterIds,
   page = 1,
+  sort,
 }: ScriptSearchParams): Promise<ScriptSearchResult> {
   const supabase = await createClient();
   const pageSize = SCRIPTS_PAGE_SIZE;
@@ -74,6 +78,7 @@ export async function searchScripts({
         : null,
     p_limit: pageSize,
     p_offset: (safePage - 1) * pageSize,
+    p_sort: sort || "newest",
   });
 
   if (error) throw error;
@@ -100,6 +105,44 @@ export async function getScriptById(id: string): Promise<Script | null> {
 
   if (error) throw error;
   return data as Script | null;
+}
+
+/** Total like count for one script — `script_likes` is a plain join table
+ * (script_id, user_id) with no running total column, so this is a real
+ * COUNT query (`head: true` skips fetching any rows, just the count).
+ * Cheap enough for a single script-detail-page load; a table listing many
+ * scripts at once still gets its counts from search_scripts()'s own
+ * aggregate instead of one query per row. */
+export async function getScriptLikeCount(scriptId: string): Promise<number> {
+  const supabase = await createClient();
+  const { count, error } = await supabase
+    .from("script_likes")
+    .select("*", { count: "exact", head: true })
+    .eq("script_id", scriptId);
+
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/** Which of the given scripts the given user has liked — used to render
+ * each LikeButton's initial filled/outline state (see app/scripts/
+ * LikeButton.tsx) for a page's worth of scripts in one query instead of
+ * one per row. Empty input short-circuits to an empty set without a
+ * round trip. */
+export async function getLikedScriptIds(
+  userId: string,
+  scriptIds: string[],
+): Promise<Set<string>> {
+  if (scriptIds.length === 0) return new Set();
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("script_likes")
+    .select("script_id")
+    .eq("user_id", userId)
+    .in("script_id", scriptIds);
+
+  if (error) throw error;
+  return new Set((data ?? []).map((row) => row.script_id as string));
 }
 
 /** Fire-and-forget view count bump. Never blocks or throws into the page. */
