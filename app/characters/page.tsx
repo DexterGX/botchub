@@ -18,7 +18,7 @@ const EDITION_OPTIONS: { value: string; label: string }[] = [
   { value: "tb", label: "Trouble Brewing" },
   { value: "bmr", label: "Bad Moon Rising" },
   { value: "snv", label: "Sects & Violets" },
-  { value: "homebrew", label: "Homebrew" },
+  { value: "homebrew", label: "Custom" },
 ];
 
 interface CharactersPageProps {
@@ -134,7 +134,7 @@ export default async function CharactersPage({
                       <div className="flex items-baseline justify-between gap-2">
                         <span className="font-medium">{c.name}</span>
                         <span className="shrink-0 text-xs text-zinc-400 dark:text-zinc-600">
-                          {c.is_homebrew ? "Homebrew" : editionLabel(c.edition)}
+                          {c.is_homebrew ? "Custom" : editionLabel(c.edition)}
                         </span>
                       </div>
                       {c.ability && (
