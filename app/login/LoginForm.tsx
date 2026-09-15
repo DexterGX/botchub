@@ -71,7 +71,7 @@ export function LoginForm() {
           />
         </div>
 
-        <TurnstileWidget />
+        <TurnstileWidget resetSignal={state} />
 
         {state.error && (
           <p className="text-sm text-red-600 dark:text-red-400">

@@ -10,12 +10,23 @@ const inputClasses =
 
 interface OnboardingFormProps {
   defaultFullName: string;
+  defaultBirthday: string;
   defaultCountry: string;
   defaultRegion: string;
 }
 
+/** Matches profile_private.referral_source's check constraint (see
+ * supabase/migrations/20260917010000_profile_referral_source.sql). */
+const REFERRAL_SOURCE_OPTIONS: { value: string; label: string }[] = [
+  { value: "clocktower_con", label: "Clocktower Con" },
+  { value: "discord", label: "Discord" },
+  { value: "friends", label: "Friends" },
+  { value: "other", label: "Other" },
+];
+
 export function OnboardingForm({
   defaultFullName,
+  defaultBirthday,
   defaultCountry,
   defaultRegion,
 }: OnboardingFormProps) {
@@ -24,6 +35,7 @@ export function OnboardingForm({
     INITIAL_PROFILE_STATE
   );
   const [country, setCountry] = useState(defaultCountry);
+  const [referralSource, setReferralSource] = useState("");
 
   return (
     <form action={formAction} className="mt-8 space-y-4">
@@ -66,6 +78,25 @@ export function OnboardingForm({
         <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
           Never shown publicly — only used later for finding you when
           logging games with people you know.
+        </p>
+      </div>
+
+      <div>
+        <label htmlFor="birthday" className="block text-sm font-medium">
+          Birthday{" "}
+          <span className="font-normal text-zinc-500 dark:text-zinc-400">
+            (optional, private)
+          </span>
+        </label>
+        <input
+          id="birthday"
+          name="birthday"
+          type="date"
+          defaultValue={defaultBirthday}
+          className={inputClasses}
+        />
+        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+          Never shown publicly — just so we can celebrate with you someday.
         </p>
       </div>
 
@@ -125,6 +156,39 @@ export function OnboardingForm({
             />
           )}
         </div>
+      </div>
+
+      <div>
+        <label htmlFor="referralSource" className="block text-sm font-medium">
+          How did you hear about BOTChub?{" "}
+          <span className="font-normal text-zinc-500 dark:text-zinc-400">
+            (optional)
+          </span>
+        </label>
+        <select
+          id="referralSource"
+          name="referralSource"
+          value={referralSource}
+          onChange={(e) => setReferralSource(e.target.value)}
+          className={inputClasses}
+        >
+          <option value="">—</option>
+          {REFERRAL_SOURCE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+        {referralSource === "other" && (
+          <input
+            id="referralSourceOther"
+            name="referralSourceOther"
+            type="text"
+            maxLength={100}
+            placeholder="Where, if you don't mind sharing"
+            className={`${inputClasses} mt-2`}
+          />
+        )}
       </div>
 
       {state.error && (

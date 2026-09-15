@@ -4,8 +4,11 @@ import { NextResponse, type NextRequest } from "next/server";
 /** Paths a logged-in-but-not-yet-onboarded visitor is still allowed to
  * hit without being bounced to /onboarding — the onboarding flow itself,
  * the rest of the auth flow (so e.g. signing out or resetting a password
- * mid-onboarding still works), and anything that isn't a page (API
- * routes, Next internals). */
+ * mid-onboarding still works), /email-confirmed (a brand-new signup lands
+ * there straight out of /auth/callback, before onboarding has happened —
+ * without this exemption this gate would bounce them straight past it to
+ * /onboarding and they'd never see the "yes, that worked" page at all),
+ * and anything that isn't a page (API routes, Next internals). */
 function isOnboardingExempt(pathname: string): boolean {
   return (
     pathname.startsWith("/onboarding") ||
@@ -13,6 +16,7 @@ function isOnboardingExempt(pathname: string): boolean {
     pathname.startsWith("/signup") ||
     pathname.startsWith("/forgot-password") ||
     pathname.startsWith("/reset-password") ||
+    pathname.startsWith("/email-confirmed") ||
     pathname.startsWith("/auth") ||
     pathname.startsWith("/api") ||
     pathname.startsWith("/_next")
