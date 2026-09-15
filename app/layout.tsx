@@ -4,6 +4,7 @@ import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ThemeToggle } from "./ThemeToggle";
 import { MobileNav } from "./MobileNav";
+import { AccountMenu } from "./AccountMenu";
 import { createClient } from "@/lib/supabase/server";
 import "./globals.css";
 
@@ -90,9 +91,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                 Characters
               </Link>
               {user ? (
-                <Link href="/account" className="hover:text-foreground">
-                  Account
-                </Link>
+                <AccountMenu />
               ) : (
                 <Link href="/login" className="hover:text-foreground">
                   Log in
