@@ -55,7 +55,25 @@ function loadTurnstileScript(): Promise<void> {
  * using the matching Turnstile secret key — Supabase verifies the token
  * server-side; this widget only produces it.
  */
-export function TurnstileWidget() {
+export function TurnstileWidget({
+  resetSignal,
+}: {
+  /** Bug fix (2026-09-15): a Turnstile token is single-use — Cloudflare
+   * rejects a second verify attempt with the same token as
+   * "timeout-or-duplicate". Supabase verifies the token as part of every
+   * signInWithPassword/signUp/resetPasswordForEmail call, so once a
+   * submit has gone through once (even one that then fails for an
+   * unrelated reason, like a wrong password), the token sitting in the
+   * hidden input is already spent — and since useActionState re-renders
+   * this same mounted form rather than remounting it, the widget was
+   * never getting a fresh one, so the *next* submit attempt always hit
+   * this error regardless of whether the credentials were now correct.
+   * Pass the enclosing form's action-state object here: the server action
+   * returns a brand-new object on every call (even a repeat of the same
+   * error message), so its identity changing is exactly the "a submit
+   * just finished" signal this widget needs to fetch a fresh token. */
+  resetSignal?: unknown;
+} = {}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
   const inputId = useId();
@@ -92,6 +110,22 @@ export function TurnstileWidget() {
       }
     };
   }, [siteKey, inputId]);
+
+  // Skip the very first render (resetSignal is just the form's initial
+  // state then, not a completed submit) and reset on every change after
+  // that — reset() re-runs verification and calls the same `callback`
+  // above with a fresh token, so the hidden input is repopulated without
+  // the visitor having to do anything.
+  const isFirstRenderRef = useRef(true);
+  useEffect(() => {
+    if (isFirstRenderRef.current) {
+      isFirstRenderRef.current = false;
+      return;
+    }
+    if (window.turnstile && widgetIdRef.current) {
+      window.turnstile.reset(widgetIdRef.current);
+    }
+  }, [resetSignal]);
 
   if (!siteKey) {
     // Not configured yet (e.g. before Diego adds the env var locally) —

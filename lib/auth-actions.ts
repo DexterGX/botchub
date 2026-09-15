@@ -81,7 +81,10 @@ export async function signUpAction(
     password,
     options: {
       captchaToken: readCaptchaToken(formData),
-      emailRedirectTo: `${origin}/auth/callback?next=/`,
+      // /email-confirmed, not straight to "/" — see that page's own doc
+      // comment. Landing on the homepage with no acknowledgment at all
+      // was the actual bug being fixed here.
+      emailRedirectTo: `${origin}/auth/callback?next=/email-confirmed`,
     },
   });
 

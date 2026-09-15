@@ -22,7 +22,7 @@ export default async function OnboardingPage() {
       .maybeSingle(),
     supabase
       .from("profile_private")
-      .select("full_name")
+      .select("full_name, birthday")
       .eq("id", user.id)
       .maybeSingle(),
   ]);
@@ -41,6 +41,7 @@ export default async function OnboardingPage() {
 
       <OnboardingForm
         defaultFullName={privateInfo?.full_name ?? ""}
+        defaultBirthday={privateInfo?.birthday ?? ""}
         defaultCountry={profile?.country ?? ""}
         defaultRegion={profile?.region ?? ""}
       />

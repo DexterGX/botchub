@@ -12,9 +12,11 @@ export const runtime = "nodejs";
  * exchange lives in a cookie this same browser already has, set when the
  * original signUp()/signInWithOAuth()/resetPasswordForEmail() call ran.
  *
- * `next` decides where to send the visitor afterward: "/" for OAuth and
- * signup confirmation, "/reset-password" for the recovery flow so they can
- * set a new password while this freshly-exchanged session is active.
+ * `next` decides where to send the visitor afterward: "/" for OAuth,
+ * "/email-confirmed" for signup confirmation (a real landing page now,
+ * not a silent bounce straight to the homepage — see that page's own doc
+ * comment), "/reset-password" for the recovery flow so they can set a new
+ * password while this freshly-exchanged session is active.
  */
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
