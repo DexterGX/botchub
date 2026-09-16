@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { getRecentScripts } from "@/lib/queries";
-import { editionLabel } from "@/lib/types";
 
 const QUICK_ACTIONS = [
   {
@@ -27,10 +26,9 @@ const QUICK_ACTIONS = [
   {
     href: "/games",
     title: "Track your games",
-    description:
-      "Log wins and losses and build your player stats. Coming soon.",
+    description: "Log wins and losses and build your player stats.",
     icon: "🎲",
-    disabled: true,
+    disabled: false,
   },
   {
     href: "/grimoire",
@@ -59,9 +57,9 @@ export default async function Home() {
           A better home for Blood on the Clocktower
         </h1>
         <p className="mx-auto mt-6 max-w-xl text-lg text-zinc-600 dark:text-zinc-400">
-          BOTChub is a community-run hub for the game — starting with a script
-          library built to stay reliably up, with game tracking and live play
-          tools on the way. Free, no account needed to browse.
+          BOTChub is a community-run hub for Blood on the Clocktower — browse
+          and upload custom scripts, look up any character, and track your
+          games and stats. Free, no account needed to browse.
         </p>
       </section>
 
@@ -71,8 +69,10 @@ export default async function Home() {
             "rounded-2xl border border-black/[.08] p-6 transition-colors dark:border-white/[.145]";
           const body = (
             <>
-              <div className="text-2xl">{action.icon}</div>
-              <div className="mt-3 font-semibold">{action.title}</div>
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl">{action.icon}</span>
+                <span className="font-semibold">{action.title}</span>
+              </div>
               <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
                 {action.description}
               </div>
@@ -124,7 +124,7 @@ export default async function Home() {
               >
                 <div className="font-semibold">{script.name}</div>
                 <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-                  {editionLabel(script.edition)}
+                  by {script.author ?? "Unknown"}
                   {script.description ? ` · ${script.description}` : ""}
                 </div>
               </Link>

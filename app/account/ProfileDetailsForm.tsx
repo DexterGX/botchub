@@ -36,7 +36,7 @@ export function ProfileDetailsForm({
         <label htmlFor="fullName" className="block text-sm font-medium">
           Name{" "}
           <span className="font-normal text-zinc-500 dark:text-zinc-400">
-            (optional, private)
+            (optional, private — only shown to friends)
           </span>
         </label>
         <input
@@ -47,16 +47,13 @@ export function ProfileDetailsForm({
           maxLength={100}
           className={inputClasses}
         />
-        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-          Never shown publicly.
-        </p>
       </div>
 
       <div>
         <label htmlFor="birthday" className="block text-sm font-medium">
           Birthday{" "}
           <span className="font-normal text-zinc-500 dark:text-zinc-400">
-            (optional, private)
+            (optional, private — only shown to friends)
           </span>
         </label>
         <input
@@ -66,9 +63,6 @@ export function ProfileDetailsForm({
           defaultValue={defaultBirthday}
           className={inputClasses}
         />
-        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-          Never shown publicly — just so we can celebrate with you someday.
-        </p>
       </div>
 
       <div className="grid grid-cols-2 gap-3">

@@ -2,10 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import { signOutAction } from "@/lib/auth-actions";
 
 const linkClasses =
   "block rounded-lg px-3 py-2 text-sm font-medium text-zinc-600 hover:bg-black/[.04] dark:text-zinc-400 dark:hover:bg-white/[.06]";
+
+const activeLinkClasses =
+  "block rounded-lg px-3 py-2 text-sm font-medium bg-black/[.06] text-foreground dark:bg-white/[.08]";
 
 const logoutButtonClasses =
   "block w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-zinc-600 hover:bg-black/[.04] dark:text-zinc-400 dark:hover:bg-white/[.06]";
@@ -31,6 +35,10 @@ const logoutButtonClasses =
 export function MobileNav({ loggedIn }: { loggedIn: boolean }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const onAccountPage = pathname === "/account";
+  const activeAccountTab = searchParams.get("tab") === "profile" ? "profile" : "overview";
 
   useEffect(() => {
     if (!open) return;
@@ -82,14 +90,49 @@ export function MobileNav({ loggedIn }: { loggedIn: boolean }) {
           >
             Characters
           </Link>
+          <Link
+            href="/games"
+            onClick={() => setOpen(false)}
+            className={linkClasses}
+          >
+            Games
+          </Link>
           {loggedIn ? (
-            <Link
-              href="/account"
-              onClick={() => setOpen(false)}
-              className={linkClasses}
-            >
-              Account
-            </Link>
+            <>
+              {/* Diego's ask: stop sending mobile straight to one long
+                  crammed /account page — instead surface the same
+                  Overview/Profile details split the >=lg sidebar already
+                  has, as its own labeled group here, separate from the
+                  Scripts/Characters/Games links above. */}
+              <div className="my-1 border-t border-black/[.08] dark:border-white/[.1]" />
+              <div className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-600">
+                Account
+              </div>
+              <Link
+                href="/account?tab=overview"
+                onClick={() => setOpen(false)}
+                aria-current={onAccountPage && activeAccountTab === "overview"}
+                className={
+                  onAccountPage && activeAccountTab === "overview"
+                    ? activeLinkClasses
+                    : linkClasses
+                }
+              >
+                Overview
+              </Link>
+              <Link
+                href="/account?tab=profile"
+                onClick={() => setOpen(false)}
+                aria-current={onAccountPage && activeAccountTab === "profile"}
+                className={
+                  onAccountPage && activeAccountTab === "profile"
+                    ? activeLinkClasses
+                    : linkClasses
+                }
+              >
+                Profile details
+              </Link>
+            </>
           ) : (
             <Link
               href="/login"
@@ -112,6 +155,29 @@ export function MobileNav({ loggedIn }: { loggedIn: boolean }) {
           )}
         </nav>
       )}
+    </div>
+  );
+}
+
+/**
+ * `useSearchParams` (used above for the Account group's active-tab
+ * highlighting) requires this Client Component to sit under a `<Suspense>`
+ * boundary wherever it's rendered from a static page — see
+ * node_modules/next/dist/docs/.../use-search-params.md's "Missing Suspense
+ * boundary" note. Since MobileNav renders from the root layout (every
+ * page on the site, not just /account), layout.tsx wraps it in
+ * `<Suspense fallback={<MobileNavFallback />}>` rather than skip the
+ * boundary and risk breaking every other static page's build. This
+ * fallback is the closed-menu button alone, same size/position, so there's
+ * no layout shift once the real component takes over.
+ */
+export function MobileNavFallback() {
+  return (
+    <div
+      aria-hidden="true"
+      className="flex h-9 w-9 items-center justify-center rounded-full border border-black/[.08] text-zinc-600 dark:border-white/[.145] dark:text-zinc-400 sm:hidden"
+    >
+      <HamburgerIcon />
     </div>
   );
 }

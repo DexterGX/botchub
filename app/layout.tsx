@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import Script from "next/script";
+import { Suspense } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ThemeToggle } from "./ThemeToggle";
-import { MobileNav } from "./MobileNav";
+import { MobileNav, MobileNavFallback } from "./MobileNav";
 import { AccountMenu } from "./AccountMenu";
 import { createClient } from "@/lib/supabase/server";
 import "./globals.css";
@@ -90,6 +91,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               <Link href="/characters" className="hover:text-foreground">
                 Characters
               </Link>
+              <Link href="/games" className="hover:text-foreground">
+                Games
+              </Link>
               {user ? (
                 <AccountMenu />
               ) : (
@@ -102,7 +106,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
 
             <div className="flex items-center gap-2 sm:hidden">
               <ThemeToggle />
-              <MobileNav loggedIn={!!user} />
+              <Suspense fallback={<MobileNavFallback />}>
+                <MobileNav loggedIn={!!user} />
+              </Suspense>
             </div>
           </div>
         </header>
