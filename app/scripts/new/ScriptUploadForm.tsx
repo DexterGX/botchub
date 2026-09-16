@@ -124,6 +124,24 @@ function detectFromScriptJson(
   };
 }
 
+/** A lot of homebrew scripts get re-exported/re-downloaded with the
+ * version baked into the filename instead of (or in addition to)
+ * `_meta.version` — e.g. "A Lleech of Distrust_2_1_1 (1).json" for
+ * version 2.1.1, the " (1)" being Windows' own dedup suffix for a
+ * repeat download, not part of the version. Treated as a fallback: the
+ * JSON's own `_meta.version` wins when present (see the call site), this
+ * only fills in when the file didn't say. Requires at least two
+ * underscore/space-separated trailing numbers so an ordinary name ending
+ * in a single digit (e.g. "Script 2.json") isn't misread as a version. */
+function detectVersionFromFilename(filename: string): string | undefined {
+  const withoutExt = filename.replace(/\.[^./\\]+$/, "");
+  const trimmed = withoutExt.replace(/\s*\(\d+\)\s*$/, "").trim();
+  const match = trimmed.match(/(?:[ _]\d+){2,}$/);
+  if (!match) return undefined;
+  const numbers = match[0].split(/[ _]/).filter(Boolean);
+  return numbers.join(".");
+}
+
 export function ScriptUploadForm({ officials }: { officials: OfficialLite[] }) {
   const [state, formAction, isPending] = useActionState(
     uploadScriptAction,
@@ -144,6 +162,11 @@ export function ScriptUploadForm({ officials }: { officials: OfficialLite[] }) {
     setFileNotice(null);
     if (!file) return;
 
+    // Independent of whether the JSON itself parses — the filename is
+    // just a string, so this is worth trying either way (see the catch
+    // block below).
+    const versionFromFilename = detectVersionFromFilename(file.name);
+
     try {
       const text = await file.text();
       const parsed: unknown = JSON.parse(text);
@@ -160,14 +183,19 @@ export function ScriptUploadForm({ officials }: { officials: OfficialLite[] }) {
       setNameLocked(!!detected.name);
       setAuthor(detected.author ?? "");
       setAuthorLocked(!!detected.author);
+      // _meta.version, when the file has one, is more authoritative than
+      // a guess from the filename — the filename is only a fallback.
       if (detected.version) setVersion(detected.version);
+      else if (versionFromFilename) setVersion(versionFromFilename);
       if (detected.scriptType) setScriptType(detected.scriptType);
       setCategory(detected.category);
     } catch {
       // Auto-fill is a convenience, not validation — a file that doesn't
       // parse here just leaves the fields as they were; the real
       // validation runs server-side on submit and reports a proper error
-      // there if the file itself is the problem.
+      // there if the file itself is the problem. The version can still
+      // come from the filename even when the JSON itself can't be read.
+      if (versionFromFilename) setVersion(versionFromFilename);
       setFileNotice(
         "Couldn't read that file to auto-fill the fields below — you can still fill them in and submit; it'll be validated on upload.",
       );
