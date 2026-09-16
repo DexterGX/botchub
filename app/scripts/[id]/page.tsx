@@ -72,7 +72,15 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
   const liked = user ? (await getLikedScriptIds(user.id, [id])).has(id) : false;
   const meta = script.script_json.find(isMetaEntry) as
     ScriptJsonMeta | undefined;
-  const author = meta?.author;
+  // `scripts.author` (this row's own DB column, set at upload time — see
+  // uploadScriptAction) is the authoritative source: it already carries
+  // whatever the uploader typed into the form, falling back to the
+  // file's own `_meta.author` and then their account name. Reading only
+  // `meta?.author` here missed every script whose file didn't credit an
+  // author but whose uploader filled that in by hand (or had it default
+  // to their account name) — that value only ever landed in the DB
+  // column, never in the stored script_json itself.
+  const author = script.author ?? meta?.author;
 
   // Jinxes are resolved from the script's own data first, before any
   // implied Djinn is added — otherwise "does this script already list
