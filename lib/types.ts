@@ -242,3 +242,156 @@ export const TEAM_LABELS: Record<Team, string> = {
   fabled: "Fabled",
   loric: "Loric",
 };
+
+// --- Track your games (Phase 7) -------------------------------------------
+// Mirrors supabase/migrations/*_game_logging_fields.sql — keep in sync.
+
+export type Alignment = "good" | "evil";
+
+export const ALIGNMENT_LABELS: Record<Alignment, string> = {
+  good: "Good",
+  evil: "Evil",
+};
+
+export type LogType = "fast" | "detailed";
+
+export type Duration =
+  | "under_45"
+  | "from_45_to_90"
+  | "from_90_to_135"
+  | "over_135";
+
+/** Ordered for display — a plain Record loses insertion order once you
+ * iterate its keys in some tooling, so callers that need the fixed left-
+ * to-right order (the duration pill row) should map over this, not
+ * Object.keys(DURATION_LABELS). */
+export const DURATION_OPTIONS: { value: Duration; label: string }[] = [
+  { value: "under_45", label: "Under 45 min" },
+  { value: "from_45_to_90", label: "45 min – 1h30" },
+  { value: "from_90_to_135", label: "1h30 – 2h15" },
+  { value: "over_135", label: "2h15+" },
+];
+
+export type LastPhase = "day" | "night";
+
+export const LAST_PHASE_LABELS: Record<LastPhase, string> = {
+  day: "Day",
+  night: "Night",
+};
+
+/** A lightweight script row for the "Script played" picker — just enough
+ * to search and display by, not the full Script (script_json included)
+ * that a script detail page needs. */
+export interface ScriptPickerRow {
+  id: string;
+  name: string;
+  author: string | null;
+  edition: Edition;
+  script_type: ScriptType;
+}
+
+export interface Game {
+  id: string;
+  created_by: string;
+  script_id: string | null;
+  /** Freeform script name entered via "+ Script Outside DB" when the played
+   * script isn't in botchub's scripts table. Mutually exclusive with
+   * script_id — exactly one of the two should be set. */
+  external_script_name: string | null;
+  played_at: string;
+  log_type: LogType;
+  self_is_storyteller: boolean;
+  winning_team: Alignment | null;
+  storyteller_mistakes: boolean;
+  duration: Duration | null;
+  final_three: boolean | null;
+  last_phase: LastPhase | null;
+  last_phase_number: number | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface GamePlayer {
+  id: string;
+  game_id: string;
+  user_id: string | null;
+  display_name: string | null;
+  character_id: string | null;
+  team: Alignment | null;
+  won: boolean | null;
+}
+
+/** One row of /games/history — a game plus the pieces of it that only
+ * live in related tables (the script's name, the logging user's own
+ * character/alignment/result, if any). Built by joining in
+ * getMyGamesPage() rather than shaping a generic nested type here. */
+export interface GameHistoryRow extends Game {
+  script_name: string | null;
+  self_character_name: string | null;
+  self_character_icon_url: string | null;
+  self_team: Alignment | null;
+  self_won: boolean | null;
+  group_codes: string[];
+}
+
+export const GAMES_PAGE_SIZE = 10;
+
+/** The teams a "role breakdown" actually means — Fabled/Loric are
+ * Storyteller-side rule modifiers, not roles a player is assigned, so a
+ * played-character count for either would be a data-quality signal (a bad
+ * character-team row) rather than a real category worth its own slice. */
+export type RoleBreakdownTeam =
+  | "townsfolk"
+  | "outsider"
+  | "minion"
+  | "demon"
+  | "traveller";
+
+export const ROLE_BREAKDOWN_TEAMS: RoleBreakdownTeam[] = [
+  "townsfolk",
+  "outsider",
+  "minion",
+  "demon",
+  "traveller",
+];
+
+/** Tailwind classes for the Account Overview role-breakdown donut/legend —
+ * one distinguishable hue per team, loosely following the site's existing
+ * good=blue/evil=red convention (see lib/scriptPdf.tsx's nameColorFor)
+ * while still giving Townsfolk/Outsider and Minion/Demon their own shade
+ * so all five read apart in a legend. */
+export const TEAM_DOT_COLORS: Record<
+  RoleBreakdownTeam,
+  { dot: string; stroke: string }
+> = {
+  townsfolk: { dot: "bg-blue-500", stroke: "stroke-blue-500" },
+  outsider: { dot: "bg-sky-400", stroke: "stroke-sky-400" },
+  minion: { dot: "bg-amber-500", stroke: "stroke-amber-500" },
+  demon: { dot: "bg-rose-600", stroke: "stroke-rose-600" },
+  traveller: { dot: "bg-purple-500", stroke: "stroke-purple-500" },
+};
+
+/** Account Overview's "Games played"/"Win rate"/role-breakdown numbers,
+ * computed from the signed-in user's own logged games — see
+ * getMyGameStats() in lib/queries.ts. */
+export interface GameStats {
+  gamesPlayed: number;
+  /** Games where the user played an assigned character (excludes games
+   * where they were the Storyteller, who has no personal win/loss). */
+  gamesWithResult: number;
+  wins: number;
+  /** null, not 0, when gamesWithResult is 0 — there is no rate to show
+   * yet, and 0% would misread as "played some and lost every one". */
+  winRate: number | null;
+  roleBreakdown: Partial<Record<Team, number>>;
+  /** Games where self_is_storyteller is true — has no personal win/loss
+   * and isn't in `gamesWithResult`/`roleBreakdown` at all, so it gets its
+   * own tile on the Account Overview instead of being silently dropped. */
+  storytellerGames: number;
+  /** Win rate scoped to games played on the Good side / the Evil side —
+   * same null-when-no-data rule as `winRate` above, computed from
+   * game_players' own alignment column (`team`), not the joined
+   * character's team (that one feeds `roleBreakdown` instead). */
+  goodWinRate: number | null;
+  evilWinRate: number | null;
+}

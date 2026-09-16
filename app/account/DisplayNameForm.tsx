@@ -9,21 +9,18 @@ const inputClasses =
 
 interface DisplayNameFormProps {
   currentDisplayName: string;
-  currentTag: string | null;
 }
 
 /**
- * Renaming and "rerolling" the #tag both go through the same
- * set_display_name() call (a new random tag every time it runs) — the
- * split here is purely about not surprising the visitor: Save only shows
- * up once they've actually typed a different name, and rerolling is its
- * own explicit button that resubmits the *current* name on purpose.
- * Without that split, an idle click on a "Save" button would silently
- * hand out a new tag for no reason.
+ * Renaming goes through the set_display_name() call, same as onboarding.
+ * There used to also be a "reroll" button here (resubmitting the current
+ * name to get a new random #tag) — removed per Diego's ask, since giving
+ * visitors an easy way to change their tag whenever they liked meant
+ * people could hop tags often enough to make the tag a poor way to tell
+ * two accounts apart.
  */
 export function DisplayNameForm({
   currentDisplayName,
-  currentTag,
 }: DisplayNameFormProps) {
   const [state, formAction, isPending] = useActionState(
     setDisplayNameAction,
@@ -58,19 +55,6 @@ export function DisplayNameForm({
           </button>
         )}
       </form>
-
-      {!hasChanged && currentTag && (
-        <form action={formAction} className="mt-2">
-          <input type="hidden" name="displayName" value={currentDisplayName} />
-          <button
-            type="submit"
-            disabled={isPending}
-            className="text-xs font-medium text-zinc-600 hover:underline disabled:opacity-60 dark:text-zinc-400"
-          >
-            🔄 Get a new #{currentTag} tag
-          </button>
-        </form>
-      )}
 
       {state.error && (
         <p className="mt-2 text-sm text-red-600 dark:text-red-400">

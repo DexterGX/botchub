@@ -2,12 +2,18 @@ import Image from "next/image";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { signOutAction } from "@/lib/auth-actions";
-import { getOfficialCharactersForFilter } from "@/lib/queries";
+import {
+  getMyGameStats,
+  getMyGamesPage,
+  getMyScriptCount,
+  getOfficialCharactersForFilter,
+} from "@/lib/queries";
 import { COUNTRIES } from "@/lib/geo";
 import { TEAM_ORDER } from "@/lib/types";
 import { DisplayNameForm } from "./DisplayNameForm";
 import { ProfileDetailsForm } from "./ProfileDetailsForm";
 import { AvatarPicker } from "./AvatarPicker";
+import { AvatarLightbox } from "./AvatarLightbox";
 import { AccountDesktopShell } from "./AccountDesktopShell";
 import { StatsOverview } from "./StatsOverview";
 
@@ -15,7 +21,20 @@ export const metadata = {
   title: "Account — BOTChub",
 };
 
-export default async function AccountPage() {
+interface AccountPageProps {
+  searchParams: Promise<{ tab?: string }>;
+}
+
+export default async function AccountPage({ searchParams }: AccountPageProps) {
+  const { tab } = await searchParams;
+  // Below `lg`, the page now shows exactly one section at a time — Diego's
+  // ask was to stop cramming settings/games/stats into one long scroll on
+  // mobile the way the >=lg layout never does, and instead let the header's
+  // hamburger (MobileNav) / tablet dropdown (AccountMenu) navigate between
+  // them via this same `tab` param, mirroring the >=lg sidebar's own
+  // Overview/Profile details split rather than inventing a second scheme.
+  const activeTab: "overview" | "profile" = tab === "profile" ? "profile" : "overview";
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -26,24 +45,40 @@ export default async function AccountPage() {
   // the check above — capture it once here so they don't need `!`/`?`.
   const authedUser = user;
 
-  const [{ data: profile }, { data: privateInfo }, characters] =
-    await Promise.all([
-      supabase
-        .from("profiles")
-        .select(
-          "display_name, tag, avatar_url, avatar_character_id, country, region",
-        )
-        .eq("id", user.id)
-        .maybeSingle(),
-      supabase
-        .from("profile_private")
-        .select("full_name, birthday")
-        .eq("id", user.id)
-        .maybeSingle(),
-      // Reused for the avatar picker grid below — same official-character
-      // list (with icon_url) the /scripts character filters already fetch.
-      getOfficialCharactersForFilter(),
-    ]);
+  // Recent games shown directly on the Overview tab — a small taste, not
+  // the full paginated list (that's what /games/history, linked from
+  // there, is for).
+  const RECENT_GAMES_LIMIT = 5;
+
+  const [
+    { data: profile },
+    { data: privateInfo },
+    characters,
+    gameStats,
+    scriptsCount,
+    recentGamesPage,
+  ] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select(
+        "display_name, tag, avatar_url, avatar_character_id, country, region",
+      )
+      .eq("id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("profile_private")
+      .select("full_name, birthday")
+      .eq("id", user.id)
+      .maybeSingle(),
+    // Reused for the avatar picker grid below — same official-character
+    // list (with icon_url) the /scripts character filters already fetch.
+    getOfficialCharactersForFilter(),
+    getMyGameStats(user.id),
+    getMyScriptCount(user.id),
+    getMyGamesPage(user.id, 1, RECENT_GAMES_LIMIT),
+  ]);
+
+  const recentGames = recentGamesPage.games;
 
   const charactersByTeam = TEAM_ORDER.map((team) => ({
     team,
@@ -101,7 +136,13 @@ export default async function AccountPage() {
         className="h-full w-full rounded-full object-cover"
       />
     ) : (
-      <span className="text-2xl font-semibold">
+      // Scales with `size` rather than a fixed text-2xl — this now also
+      // renders at 256px in the AvatarLightbox's enlarged view below, where
+      // a fixed small font would look lost in the middle of a huge circle.
+      <span
+        className="font-semibold"
+        style={{ fontSize: `${size * 0.42}px` }}
+      >
         {(profile?.display_name ?? authedUser.email ?? "?")
           .charAt(0)
           .toUpperCase()}
@@ -109,12 +150,23 @@ export default async function AccountPage() {
     );
   }
 
+  const avatarAlt = profile?.display_name
+    ? `${profile.display_name}'s profile photo`
+    : "profile photo";
+
+  // Shared between the mobile and desktop AvatarLightbox `large` props
+  // below — a solid, opaque circle (not the small trigger's faint
+  // `bg-black/[.06]` tint) so a token icon's own transparent PNG padding
+  // shows this solid color instead of whatever's behind the modal.
+  const avatarLarge = (
+    <div className="flex h-56 w-56 items-center justify-center overflow-hidden rounded-full bg-zinc-100 shadow-2xl dark:bg-zinc-800">
+      {renderAvatar(224)}
+    </div>
+  );
+
   const profileDetailsSection = (
     <>
-      <DisplayNameForm
-        currentDisplayName={profile?.display_name ?? ""}
-        currentTag={profile?.tag ?? null}
-      />
+      <DisplayNameForm currentDisplayName={profile?.display_name ?? ""} />
       <ProfileDetailsForm
         defaultFullName={privateInfo?.full_name ?? ""}
         defaultBirthday={privateInfo?.birthday ?? ""}
@@ -155,9 +207,15 @@ export default async function AccountPage() {
           </div>
 
           <div className="relative flex items-center gap-4 p-5">
-            <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-black/[.06] ring-2 ring-black/[.06] dark:bg-white/[.08] dark:ring-white/[.1]">
-              {renderAvatar(80)}
-            </div>
+            <AvatarLightbox
+              alt={avatarAlt}
+              trigger={
+                <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-black/[.06] ring-2 ring-black/[.06] dark:bg-white/[.08] dark:ring-white/[.1]">
+                  {renderAvatar(80)}
+                </div>
+              }
+              large={avatarLarge}
+            />
 
             <div className="min-w-0 flex-1">
               <div className="truncate font-medium">{nameTag}</div>
@@ -182,14 +240,26 @@ export default async function AccountPage() {
           </div>
         </div>
 
-        {/* Same Overview content (KPI tiles + role breakdown) the >=lg
-            layout's Overview tab shows — phones get it too now, just
-            stacked under the identity card instead of behind a tab. */}
+        {/* Exactly one section at a time, chosen by `?tab=` — the hamburger
+            (MobileNav) links here with the section already picked, same
+            data/components the >=lg sidebar's tabs use, just navigated to
+            instead of switched in place. */}
         <div className="mt-6">
-          <StatsOverview />
+          {activeTab === "overview" ? (
+            <StatsOverview
+              scriptsCount={scriptsCount}
+              stats={gameStats}
+              recentGames={recentGames}
+            />
+          ) : (
+            <div>
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                Profile details
+              </h2>
+              <div className="mt-3">{profileDetailsSection}</div>
+            </div>
+          )}
         </div>
-
-        {profileDetailsSection}
 
         <div className="mt-6">{logoutButton}</div>
       </div>
@@ -201,8 +271,16 @@ export default async function AccountPage() {
         <AccountDesktopShell
           sidebarHeader={
             <div className="text-center">
-              <div className="mx-auto flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-black/[.06] ring-2 ring-black/[.06] dark:bg-white/[.08] dark:ring-white/[.1]">
-                {renderAvatar(96)}
+              <div className="mx-auto flex justify-center">
+                <AvatarLightbox
+                  alt={avatarAlt}
+                  trigger={
+                    <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-black/[.06] ring-2 ring-black/[.06] dark:bg-white/[.08] dark:ring-white/[.1]">
+                      {renderAvatar(96)}
+                    </div>
+                  }
+                  large={avatarLarge}
+                />
               </div>
               <div className="mt-3 truncate font-medium">{nameTag}</div>
               <div className="truncate text-sm text-zinc-600 dark:text-zinc-400">
@@ -230,7 +308,13 @@ export default async function AccountPage() {
               id: "overview",
               label: "Overview",
               description: "Stats & activity",
-              content: <StatsOverview />,
+              content: (
+                <StatsOverview
+                  scriptsCount={scriptsCount}
+                  stats={gameStats}
+                  recentGames={recentGames}
+                />
+              ),
             },
             {
               id: "profile",
