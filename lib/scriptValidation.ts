@@ -102,7 +102,14 @@ export interface NormalizedCharacterRef {
 }
 
 export interface NormalizedScriptUpload {
-  meta: { name: string; author?: string; bootleggerRules?: string[] };
+  /** `name` is optional here — plenty of real exports (and hand-trimmed
+   * files like a bare array of character ids) skip `_meta` entirely, or
+   * include one without a name. The upload form's Script Name field is
+   * the authoritative source and unlocks for manual entry whenever the
+   * file doesn't supply one (see ScriptUploadForm.tsx); this module's job
+   * is just to report what the file itself said, not to require a name
+   * that has to come from here. */
+  meta: { name?: string; author?: string; bootleggerRules?: string[] };
   /** De-duplicated, in original order. Guaranteed non-empty. */
   characters: NormalizedCharacterRef[];
   /** The exact parsed JSON array, stored verbatim as script_json — the
@@ -182,9 +189,6 @@ export function parseScriptUpload(rawText: string): ScriptValidationResult {
       sawMeta = true;
       const nameResult = readOptionalString(obj.name, "_meta.name");
       if (!nameResult.ok) return nameResult;
-      if (!nameResult.value) {
-        return { ok: false, error: "The script's _meta entry needs a name." };
-      }
       metaName = nameResult.value;
       const authorResult = readOptionalString(obj.author, "_meta.author");
       if (!authorResult.ok) return authorResult;
@@ -251,9 +255,6 @@ export function parseScriptUpload(rawText: string): ScriptValidationResult {
     });
   }
 
-  if (!sawMeta || !metaName) {
-    return { ok: false, error: "This script has no _meta entry with a name." };
-  }
   if (characters.length === 0) {
     return { ok: false, error: "This script has no characters." };
   }

@@ -19,12 +19,16 @@ import {
 const inputClasses =
   "mt-1.5 w-full rounded-lg border border-black/[.12] bg-white px-4 py-2 text-sm outline-none focus:border-zinc-400 dark:border-white/[.15] dark:bg-zinc-900";
 
-/** Script Name and Author are locked to whatever the uploaded file itself
- * says (per Diego's ask — these should come straight from the JSON, not
- * be hand-edited), so they get a visibly non-interactive style instead of
- * the normal focusable input treatment. Still real, submitted form
- * fields (readOnly, not disabled — a disabled input's value never makes
- * it into FormData). */
+/** Script Name and Author lock to whatever the uploaded file itself says
+ * (per Diego's ask — these should come straight from the JSON, not be
+ * hand-edited) whenever the file actually supplies one. Plenty of real
+ * exports skip `_meta` entirely or omit `author`, though, so each field
+ * unlocks to a normal editable input the moment file selection comes back
+ * without that piece — otherwise a file with no `_meta.name` could never
+ * be uploaded at all, since nothing else can fill in the required name.
+ * Locked fields get a visibly non-interactive style; they're still real,
+ * submitted form fields (readOnly, not disabled — a disabled input's
+ * value never makes it into FormData). */
 const readOnlyInputClasses =
   "mt-1.5 w-full cursor-not-allowed rounded-lg border border-black/[.12] bg-zinc-100 px-4 py-2 text-sm text-zinc-600 outline-none dark:border-white/[.15] dark:bg-zinc-800 dark:text-zinc-400";
 
@@ -127,7 +131,9 @@ export function ScriptUploadForm({ officials }: { officials: OfficialLite[] }) {
   );
 
   const [scriptName, setScriptName] = useState("");
+  const [nameLocked, setNameLocked] = useState(true);
   const [author, setAuthor] = useState("");
+  const [authorLocked, setAuthorLocked] = useState(true);
   const [version, setVersion] = useState("1.0.0");
   const [scriptType, setScriptType] = useState<ScriptType>("full");
   const [category, setCategory] = useState<ScriptCategory>("custom");
@@ -147,8 +153,13 @@ export function ScriptUploadForm({ officials }: { officials: OfficialLite[] }) {
         officials,
       );
 
-      if (detected.name) setScriptName(detected.name);
-      if (detected.author) setAuthor(detected.author);
+      // A file that doesn't supply a name/author unlocks that field for
+      // manual entry instead of leaving it stuck blank and readOnly — see
+      // the comment on readOnlyInputClasses above.
+      setScriptName(detected.name ?? "");
+      setNameLocked(!!detected.name);
+      setAuthor(detected.author ?? "");
+      setAuthorLocked(!!detected.author);
       if (detected.version) setVersion(detected.version);
       if (detected.scriptType) setScriptType(detected.scriptType);
       setCategory(detected.category);
@@ -193,12 +204,23 @@ export function ScriptUploadForm({ officials }: { officials: OfficialLite[] }) {
           name="scriptName"
           type="text"
           required
-          readOnly
+          readOnly={nameLocked}
+          onChange={(e) => setScriptName(e.target.value)}
           maxLength={200}
           value={scriptName}
-          placeholder="Taken from the file's own name — choose a file above"
-          className={readOnlyInputClasses}
+          placeholder={
+            nameLocked
+              ? "Taken from the file's own name — choose a file above"
+              : "This file doesn't include a name — type one here"
+          }
+          className={nameLocked ? readOnlyInputClasses : inputClasses}
         />
+        {!nameLocked && scriptName === "" && (
+          <p className="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+            This script&apos;s file didn&apos;t include a name — enter one
+            above to upload it.
+          </p>
+        )}
       </div>
 
       <div>
@@ -212,11 +234,16 @@ export function ScriptUploadForm({ officials }: { officials: OfficialLite[] }) {
           id="author"
           name="author"
           type="text"
-          readOnly
+          readOnly={authorLocked}
+          onChange={(e) => setAuthor(e.target.value)}
           maxLength={200}
           value={author}
-          placeholder="Taken from the file's own credit, or your account name"
-          className={readOnlyInputClasses}
+          placeholder={
+            authorLocked
+              ? "Taken from the file's own credit, or your account name"
+              : "This file doesn't credit an author — type one, or leave blank to use your account name"
+          }
+          className={authorLocked ? readOnlyInputClasses : inputClasses}
         />
       </div>
 
