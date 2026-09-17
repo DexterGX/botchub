@@ -103,25 +103,6 @@ export async function signUpAction(
   redirect("/");
 }
 
-/** Plain (non-state) action for the "Continue with Google" button — there's
- * nothing to show inline on error, so it just bounces back to /login. */
-export async function signInWithGoogleAction(): Promise<void> {
-  const supabase = await createClient();
-  const origin = await getOrigin();
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      redirectTo: `${origin}/auth/callback?next=/`,
-    },
-  });
-
-  if (error || !data.url) {
-    redirect("/login?error=oauth");
-  }
-
-  redirect(data.url);
-}
-
 export async function requestPasswordResetAction(
   _prevState: AuthActionState,
   formData: FormData,

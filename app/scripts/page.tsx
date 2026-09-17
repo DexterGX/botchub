@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import {
   getLikedScriptIds,
   getOfficialCharactersForFilter,
@@ -16,6 +17,7 @@ import {
 } from "@/lib/types";
 import { CharacterFilterDropdown } from "./CharacterFilterDropdown";
 import { LikeButton } from "./LikeButton";
+import { SearchBox, SearchBoxFallback } from "./SearchBox";
 
 export const metadata = {
   title: "Browse scripts — BOTChub",
@@ -347,13 +349,9 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
           that sort value's carrier at every width (see its own comment),
           so there's no separate hidden input for it here. */}
       <form className="mt-6" action="/scripts">
-        <input
-          type="search"
-          name="q"
-          defaultValue={q}
-          placeholder="Search by script name or description…"
-          className="w-full rounded-full border border-black/[.12] bg-white px-5 py-3 text-sm outline-none focus:border-zinc-400 dark:border-white/[.15] dark:bg-zinc-900"
-        />
+        <Suspense fallback={<SearchBoxFallback initialValue={q} />}>
+          <SearchBox initialValue={q} />
+        </Suspense>
 
         <div className="mt-4 grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-start">
           <input

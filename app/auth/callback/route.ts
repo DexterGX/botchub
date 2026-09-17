@@ -5,18 +5,25 @@ import { createClient } from "@/lib/supabase/server";
 export const runtime = "nodejs";
 
 /**
- * Single landing spot after: a Google OAuth sign-in, clicking a signup
- * confirmation email link, or clicking a password-reset email link. All
- * three end up here with a `code` param (Supabase's PKCE flow) that gets
- * exchanged for a real session — the code verifier needed to do that
- * exchange lives in a cookie this same browser already has, set when the
- * original signUp()/signInWithOAuth()/resetPasswordForEmail() call ran.
+ * Single landing spot after: clicking a signup confirmation email link, or
+ * clicking a password-reset email link. Both end up here with a `code`
+ * param (Supabase's PKCE flow) that gets exchanged for a real session — the
+ * code verifier needed to do that exchange lives in a cookie this same
+ * browser already has, set when the original
+ * signUp()/resetPasswordForEmail() call ran.
  *
- * `next` decides where to send the visitor afterward: "/" for OAuth,
- * "/email-confirmed" for signup confirmation (a real landing page now,
- * not a silent bounce straight to the homepage — see that page's own doc
- * comment), "/reset-password" for the recovery flow so they can set a new
- * password while this freshly-exchanged session is active.
+ * Google sign-in no longer comes through here — see
+ * components/GoogleSignInButton.tsx, which authenticates directly via
+ * Google Identity Services + signInWithIdToken() instead of Supabase's
+ * redirect-based signInWithOAuth(), specifically so the browser never
+ * bounces through this project's own supabase.co domain on its way to
+ * Google.
+ *
+ * `next` decides where to send the visitor afterward: "/email-confirmed"
+ * for signup confirmation (a real landing page now, not a silent bounce
+ * straight to the homepage — see that page's own doc comment),
+ * "/reset-password" for the recovery flow so they can set a new password
+ * while this freshly-exchanged session is active.
  */
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
