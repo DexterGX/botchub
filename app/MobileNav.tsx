@@ -69,7 +69,7 @@ export function MobileNav({ loggedIn }: { loggedIn: boolean }) {
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-label={open ? "Close menu" : "Open menu"}
-        className="flex h-9 w-9 items-center justify-center rounded-full border border-black/[.08] text-zinc-600 transition-colors hover:border-zinc-400 hover:text-zinc-900 dark:border-white/[.145] dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-50"
+        className="flex h-11 w-11 items-center justify-center rounded-full border border-black/[.08] text-zinc-600 transition-colors hover:border-zinc-400 hover:text-zinc-900 dark:border-white/[.145] dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-50"
       >
         {open ? <CloseIcon /> : <HamburgerIcon />}
       </button>
@@ -175,7 +175,7 @@ export function MobileNavFallback() {
   return (
     <div
       aria-hidden="true"
-      className="flex h-9 w-9 items-center justify-center rounded-full border border-black/[.08] text-zinc-600 dark:border-white/[.145] dark:text-zinc-400 sm:hidden"
+      className="flex h-11 w-11 items-center justify-center rounded-full border border-black/[.08] text-zinc-600 dark:border-white/[.145] dark:text-zinc-400 sm:hidden"
     >
       <HamburgerIcon />
     </div>
@@ -189,7 +189,7 @@ function HamburgerIcon() {
       fill="none"
       stroke="currentColor"
       strokeWidth={1.5}
-      className="h-4 w-4"
+      className="h-5 w-5"
       aria-hidden="true"
     >
       <path d="M3 5.5h14M3 10h14M3 14.5h14" strokeLinecap="round" />
@@ -204,7 +204,7 @@ function CloseIcon() {
       fill="none"
       stroke="currentColor"
       strokeWidth={1.5}
-      className="h-4 w-4"
+      className="h-5 w-5"
       aria-hidden="true"
     >
       <path d="M5 5l10 10M15 5L5 15" strokeLinecap="round" />

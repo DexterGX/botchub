@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useActionState } from "react";
-import { signInAction, signInWithGoogleAction } from "@/lib/auth-actions";
+import { signInAction } from "@/lib/auth-actions";
 import { INITIAL_AUTH_STATE } from "@/lib/auth-action-state";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
-import { GoogleIcon } from "@/components/GoogleIcon";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 
 const inputClasses =
   "mt-1.5 w-full rounded-full border border-black/[.12] bg-white px-4 py-2 text-sm outline-none focus:border-zinc-400 dark:border-white/[.15] dark:bg-zinc-900";
@@ -18,15 +18,7 @@ export function LoginForm() {
 
   return (
     <div className="mt-8 space-y-6">
-      <form action={signInWithGoogleAction}>
-        <button
-          type="submit"
-          className="flex w-full items-center justify-center gap-2 rounded-full border border-black/[.12] bg-white px-5 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:border-zinc-400 dark:border-white/[.15] dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-600"
-        >
-          <GoogleIcon />
-          Continue with Google
-        </button>
-      </form>
+      <GoogleSignInButton />
 
       <div className="flex items-center gap-3 text-xs text-zinc-500 dark:text-zinc-400">
         <div className="h-px flex-1 bg-black/[.08] dark:bg-white/[.145]" />
