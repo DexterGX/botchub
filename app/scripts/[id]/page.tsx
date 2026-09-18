@@ -28,6 +28,7 @@ import {
   type Character,
   type ScriptJsonMeta,
 } from "@/lib/types";
+import { DifficultyStars } from "@/components/DifficultyStars";
 import { LikeButton } from "../LikeButton";
 
 const SHEET_TEAM_ORDER = TEAM_ORDER.filter(
@@ -142,6 +143,8 @@ export default async function ScriptDetailPage({ params }: ScriptPageProps) {
             <span className="rounded-full border border-black/[.12] px-2.5 py-0.5 text-xs font-medium dark:border-white/[.15]">
               {SCRIPT_CATEGORY_LABELS[script.category]}
             </span>
+            <span aria-hidden="true">·</span>
+            <DifficultyStars difficulty={script.difficulty} size="lg" />
           </p>
         </div>
 

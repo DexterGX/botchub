@@ -40,6 +40,10 @@ export interface ScriptSearchParams {
   page?: number;
   /** Defaults to "newest" (search_scripts()'s own default) when omitted. */
   sort?: ScriptSortOrder;
+  /** Only scripts with `difficulty >= minDifficulty` (see
+   * lib/types.ts's DIFFICULTY_FILTER_OPTIONS). Omitted/undefined means no
+   * floor — search_scripts()'s own p_min_difficulty default. */
+  minDifficulty?: number;
 }
 
 export interface ScriptSearchResult {
@@ -63,6 +67,7 @@ export async function searchScripts({
   excludeCharacterIds,
   page = 1,
   sort,
+  minDifficulty,
 }: ScriptSearchParams): Promise<ScriptSearchResult> {
   const supabase = await createClient();
   const pageSize = SCRIPTS_PAGE_SIZE;
@@ -83,6 +88,7 @@ export async function searchScripts({
     p_limit: pageSize,
     p_offset: (safePage - 1) * pageSize,
     p_sort: sort || "newest",
+    p_min_difficulty: minDifficulty ?? null,
   });
 
   if (error) throw error;

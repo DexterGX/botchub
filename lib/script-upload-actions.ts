@@ -218,5 +218,14 @@ export async function uploadScriptAction(
     return { error: friendlyError(linkError.message) };
   }
 
+  // Best-effort, same as increment_script_view_count below on the detail
+  // page: a script is fully valid and viewable without a difficulty
+  // score, so a failure here doesn't undo the upload — it just leaves
+  // difficulty null until the script is re-saved. Has to happen after the
+  // script_characters insert above, not alongside the scripts insert
+  // earlier, since compute_script_difficulty() reads this script's own
+  // characters to do its scoring.
+  await supabase.rpc("recompute_script_difficulty", { p_script_id: scriptId });
+
   redirect(`/scripts/${scriptId}`);
 }

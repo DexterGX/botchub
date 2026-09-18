@@ -74,6 +74,13 @@ export interface Script {
   view_count: number;
   created_at: string;
   updated_at: string;
+  /** Auto-computed 1-6 (quarter-star) difficulty estimate — see
+   * compute_script_difficulty() (supabase/migrations/
+   * 20260918000003_script_difficulty_rating.sql through
+   * *_search_scripts_difficulty.sql, plus the v2 rework in
+   * *_script_difficulty_rating_v2*.sql). Null for a script uploaded before
+   * this existed, until it's re-saved. */
+  difficulty: number | null;
 }
 
 /** A row from the search_scripts() RPC — a subset of Script's columns (no
@@ -89,6 +96,7 @@ export interface ScriptSearchRow {
   view_count: number;
   like_count: number;
   created_at: string;
+  difficulty: number | null;
   total_count: number;
 }
 
@@ -108,6 +116,21 @@ export const SCRIPT_TYPE_LABELS: Record<ScriptType, string> = {
 };
 
 export const SCRIPTS_PAGE_SIZE = 20;
+
+/** Options for the /scripts "Difficulty" browse filter — whole-star
+ * minimums only (not every quarter-star step) to keep the <select> short;
+ * "1+" is left out since every script is at least 1 star, making it
+ * equivalent to "Any". Passed straight through as search_scripts()'s
+ * p_min_difficulty. */
+export const DIFFICULTY_FILTER_OPTIONS: readonly {
+  value: 2 | 3 | 4 | 5;
+  label: string;
+}[] = [
+  { value: 2, label: "2+ stars" },
+  { value: 3, label: "3+ stars" },
+  { value: 4, label: "4+ stars" },
+  { value: 5, label: "5+ stars" },
+];
 
 /** How /scripts orders its results — passed straight through to the
  * search_scripts() SQL function's own p_sort parameter (see
@@ -131,7 +154,9 @@ export type ScriptSortOrder =
   | "most_views"
   | "fewest_views"
   | "most_likes"
-  | "fewest_likes";
+  | "fewest_likes"
+  | "most_difficult"
+  | "least_difficult";
 
 export const DEFAULT_SCRIPT_SORT: ScriptSortOrder = "newest";
 
@@ -151,6 +176,8 @@ export const SCRIPT_SORT_LABELS: Record<ScriptSortOrder, string> = {
   fewest_likes: "Fewest likes",
   most_views: "Most views",
   fewest_views: "Fewest views",
+  most_difficult: "Most difficult",
+  least_difficult: "Least difficult",
 };
 
 export interface Character {
