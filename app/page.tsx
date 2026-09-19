@@ -42,9 +42,9 @@ const QUICK_ACTIONS = [
   {
     href: "/groups",
     title: "Groups & leaderboards",
-    description: "Track standings with your regular playgroup. Coming soon.",
+    description: "Track standings with your regular playgroup.",
     icon: "🏆",
-    disabled: true,
+    disabled: false,
   },
 ] as const;
 

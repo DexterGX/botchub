@@ -26,11 +26,14 @@ export function TagInput({
   /** Group codes read better shouty (matches how invite codes are usually
    * shared); player names shouldn't be forced uppercase. */
   uppercase?: boolean;
-  /** Known values to offer as a dropdown while typing (e.g. the codes of
-   * groups the signed-in user actually belongs to) — omit for a plain
-   * free-typed TagInput like player names, which has no fixed candidate
-   * list to suggest from. */
-  suggestions?: string[];
+  /** Known values to offer as a dropdown while typing (e.g. the groups
+   * the signed-in user actually belongs to) — omit for a plain free-typed
+   * TagInput like player names, which has no fixed candidate list to
+   * suggest from. `value` is what's actually committed as the tag (and
+   * matched against `values` for de-duping); `label` is shown in the
+   * dropdown and can carry extra context (e.g. "Thursday Crew - D4423")
+   * so the code alone doesn't have to do all the identifying. */
+  suggestions?: { value: string; label: string }[];
 }) {
   const [draft, setDraft] = useState("");
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
@@ -50,9 +53,11 @@ export function TagInput({
   }
 
   const filteredSuggestions = (suggestions ?? []).filter((s) => {
-    if (values.some((v) => v.toLowerCase() === s.toLowerCase())) return false;
+    if (values.some((v) => v.toLowerCase() === s.value.toLowerCase())) return false;
     const q = draft.trim().toLowerCase();
-    return q ? s.toLowerCase().startsWith(q) : true;
+    return q
+      ? s.value.toLowerCase().startsWith(q) || s.label.toLowerCase().includes(q)
+      : true;
   });
   const showSuggestions =
     suggestions !== undefined && suggestionsOpen && filteredSuggestions.length > 0;
@@ -107,7 +112,7 @@ export function TagInput({
         <div className="absolute inset-x-0 top-full z-10 mt-1 max-h-48 overflow-y-auto rounded-xl border border-black/[.12] bg-white py-1 shadow-lg dark:border-white/[.15] dark:bg-zinc-900">
           {filteredSuggestions.map((s) => (
             <button
-              key={s}
+              key={s.value}
               type="button"
               // Selecting a suggestion is a mousedown, not a click — it must
               // fire before the input's onBlur (which runs on mousedown-
@@ -115,11 +120,11 @@ export function TagInput({
               // click never lands on a value that's already gone.
               onMouseDown={(e) => {
                 e.preventDefault();
-                commit(s);
+                commit(s.value);
               }}
-              className={`block w-full px-3 py-1.5 text-left text-sm hover:bg-black/[.04] dark:hover:bg-white/[.06] ${uppercase ? "uppercase tracking-wide" : ""}`}
+              className="block w-full px-3 py-1.5 text-left text-sm hover:bg-black/[.04] dark:hover:bg-white/[.06]"
             >
-              {s}
+              {s.label}
             </button>
           ))}
         </div>

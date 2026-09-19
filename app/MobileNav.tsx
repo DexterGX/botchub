@@ -97,6 +97,13 @@ export function MobileNav({ loggedIn }: { loggedIn: boolean }) {
           >
             Games
           </Link>
+          <Link
+            href="/groups"
+            onClick={() => setOpen(false)}
+            className={linkClasses}
+          >
+            Groups
+          </Link>
           {loggedIn ? (
             <>
               {/* Diego's ask: stop sending mobile straight to one long
