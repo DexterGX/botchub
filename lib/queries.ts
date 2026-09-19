@@ -11,8 +11,19 @@ import type {
   ScriptPickerRow,
   GameHistoryRow,
   GameStats,
+  Group,
+  GroupCardRow,
+  PublicGroupRow,
+  PendingJoinRequestRow,
+  GroupLeaderboardRow,
+  GroupHistoryRow,
+  GroupVisibility,
 } from "@/lib/types";
-import { GAMES_PAGE_SIZE, SCRIPTS_PAGE_SIZE } from "@/lib/types";
+import {
+  GAMES_PAGE_SIZE,
+  SCRIPTS_PAGE_SIZE,
+  GROUP_HISTORY_PAGE_SIZE,
+} from "@/lib/types";
 import type { GlobalJinxRow } from "@/lib/jinxes";
 
 export async function getRecentScripts(limit = 6): Promise<Script[]> {
@@ -40,6 +51,10 @@ export interface ScriptSearchParams {
   page?: number;
   /** Defaults to "newest" (search_scripts()'s own default) when omitted. */
   sort?: ScriptSortOrder;
+  /** Only scripts with `difficulty >= minDifficulty` (see
+   * lib/types.ts's DIFFICULTY_FILTER_OPTIONS). Omitted/undefined means no
+   * floor — search_scripts()'s own p_min_difficulty default. */
+  minDifficulty?: number;
 }
 
 export interface ScriptSearchResult {
@@ -63,6 +78,7 @@ export async function searchScripts({
   excludeCharacterIds,
   page = 1,
   sort,
+  minDifficulty,
 }: ScriptSearchParams): Promise<ScriptSearchResult> {
   const supabase = await createClient();
   const pageSize = SCRIPTS_PAGE_SIZE;
@@ -83,6 +99,7 @@ export async function searchScripts({
     p_limit: pageSize,
     p_offset: (safePage - 1) * pageSize,
     p_sort: sort || "newest",
+    p_min_difficulty: minDifficulty ?? null,
   });
 
   if (error) throw error;
@@ -481,17 +498,368 @@ export async function getMyScriptCount(userId: string): Promise<number> {
   return count ?? 0;
 }
 
-/** Invite codes for every group the signed-in user belongs to (member or
- * owner) — powers the Group code(s) autocomplete on the log forms. Takes
- * no userId: unlike getMyGames (which needs it to also pick the caller's
- * own row out of a joined game_players list), scoping here comes entirely
- * from groups' own SELECT RLS policy (owner or member can see a group), so
- * this plain unfiltered select is already scoped without duplicating that
- * check here — the caller must still be signed in for RLS to apply. */
-export async function getMyGroupCodes(): Promise<string[]> {
+/** Name + invite code for every group the signed-in user belongs to
+ * (member or owner) — powers the Group code(s) autocomplete on the log
+ * forms, shown as "Name - ID#" so the code alone doesn't have to be
+ * memorable. Takes no userId: unlike getMyGames (which needs it to also
+ * pick the caller's own row out of a joined game_players list), scoping
+ * here comes entirely from groups' own SELECT RLS policy (owner or member
+ * can see a group), so this plain unfiltered select is already scoped
+ * without duplicating that check here — the caller must still be signed
+ * in for RLS to apply. */
+export async function getMyGroupCodes(): Promise<
+  { code: string; name: string }[]
+> {
   const supabase = await createClient();
-  const { data, error } = await supabase.from("groups").select("invite_code");
+  const { data, error } = await supabase.from("groups").select("invite_code, name");
 
   if (error) throw error;
-  return (data ?? []).map((row) => row.invite_code as string);
+  return (data ?? []).map((row) => ({
+    code: row.invite_code as string,
+    name: row.name as string,
+  }));
+}
+
+// --- Groups & Leaderboard ---------------------------------------------------
+
+/** Adds each group's member_count in one extra query rather than one per
+ * group — cheap at today's scale, and avoids an N+1 as soon as a user is
+ * in more than a couple of groups. */
+async function countMembersByGroup(
+  groupIds: string[],
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  if (groupIds.length === 0) return counts;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("group_members")
+    .select("group_id")
+    .in("group_id", groupIds);
+  if (error) throw error;
+
+  for (const row of data ?? []) {
+    const id = row.group_id as string;
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/** Every group the signed-in user owns or belongs to, for the /groups
+ * cards list. Two lookups (owned groups, membership rows) rather than one
+ * `.or()` across tables — Supabase's query builder can't express "owner_id
+ * = me OR id in (my group_members' group_ids)" as a single filter without
+ * string-interpolating ids into `.or()`, and this keeps the id list a
+ * real array instead. */
+export async function getMyGroups(userId: string): Promise<GroupCardRow[]> {
+  const supabase = await createClient();
+
+  const { data: memberRows, error: memberError } = await supabase
+    .from("group_members")
+    .select("group_id, role")
+    .eq("user_id", userId);
+  if (memberError) throw memberError;
+
+  const roleByGroupId = new Map(
+    (memberRows ?? []).map((r) => [r.group_id as string, r.role as "owner" | "member"]),
+  );
+  const groupIds = Array.from(roleByGroupId.keys());
+
+  const { data, error } = await supabase
+    .from("groups")
+    .select("*")
+    .or(
+      groupIds.length > 0
+        ? `owner_id.eq.${userId},id.in.(${groupIds.join(",")})`
+        : `owner_id.eq.${userId}`,
+    )
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+
+  const groups = (data ?? []) as Group[];
+  const counts = await countMembersByGroup(groups.map((g) => g.id));
+
+  return groups.map((g) => ({
+    ...g,
+    member_count: counts.get(g.id) ?? 0,
+    my_role: g.owner_id === userId ? "owner" : (roleByGroupId.get(g.id) ?? "member"),
+  }));
+}
+
+export interface PublicGroupSearchParams {
+  q?: string;
+}
+
+/** The /groups/join browse list — every group with visibility='public',
+ * which its own RLS policy already allows anyone to SELECT (see the
+ * schema migration's "public groups are visible to everyone" policy). */
+export async function getPublicGroups({
+  q,
+}: PublicGroupSearchParams): Promise<PublicGroupRow[]> {
+  const supabase = await createClient();
+  let query = supabase
+    .from("groups")
+    .select("id, name, description, invite_code, cover_image_url")
+    .eq("visibility", "public");
+
+  if (q) {
+    query = query.ilike("name", `%${q}%`);
+  }
+
+  const { data, error } = await query.order("created_at", { ascending: false });
+  if (error) throw error;
+
+  const groups = (data ?? []) as Omit<PublicGroupRow, "member_count">[];
+  const counts = await countMembersByGroup(groups.map((g) => g.id));
+  return groups.map((g) => ({ ...g, member_count: counts.get(g.id) ?? 0 }));
+}
+
+/** Resolves a typed ID# to a group via the find_group_by_code() RPC — the
+ * one path that can reach a private, not-yet-joined group by its exact
+ * code without a broader RLS policy exposing it to any browse/list
+ * query (see the schema migration's reasoning). Returns null for an
+ * unknown code rather than throwing, since "no such code" is an expected
+ * user-typo case here, not an error. */
+export async function findGroupByCode(
+  code: string,
+): Promise<PublicGroupRow & { visibility: GroupVisibility; description: string | null } | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("find_group_by_code", {
+    p_code: code.trim().toUpperCase(),
+  });
+  if (error) throw error;
+
+  const row = (data ?? [])[0] as
+    | {
+        id: string;
+        name: string;
+        description: string | null;
+        visibility: GroupVisibility;
+        invite_code: string;
+        cover_image_url: string | null;
+        member_count: number;
+      }
+    | undefined;
+  return row ?? null;
+}
+
+/** A plain RLS-scoped select is invisible for a PRIVATE group the caller
+ * isn't a member of yet (see find_group_by_id()'s migration comment) —
+ * which would 404 /groups/[id] for anyone who found a private group via
+ * search but hasn't been approved to join it. Falls back to the
+ * SECURITY DEFINER find_group_by_id() RPC (exact-id-only, same "you must
+ * already know the identifier" model as find_group_by_code()) only when
+ * the fast RLS-scoped path comes back empty. */
+export async function getGroupById(id: string): Promise<Group | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("groups")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  if (data) return data as Group;
+
+  const { data: rpcRows, error: rpcError } = await supabase.rpc(
+    "find_group_by_id",
+    { p_group_id: id },
+  );
+  if (rpcError) throw rpcError;
+  return ((rpcRows ?? [])[0] as Group | undefined) ?? null;
+}
+
+/** null = not a member (and not the owner — callers already have the
+ * group's own owner_id to check that side separately). */
+export async function getGroupMembership(
+  groupId: string,
+  userId: string,
+): Promise<"owner" | "member" | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("group_members")
+    .select("role")
+    .eq("group_id", groupId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  return (data?.role as "owner" | "member" | undefined) ?? null;
+}
+
+export async function getMyJoinRequestStatus(
+  groupId: string,
+  userId: string,
+): Promise<"pending" | "approved" | "rejected" | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("group_join_requests")
+    .select("status")
+    .eq("group_id", groupId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  return (data?.status as "pending" | "approved" | "rejected" | undefined) ?? null;
+}
+
+/** Pending requests for the group owner's own Players-tab approval queue
+ * — RLS already limits group_join_requests SELECT to the requester
+ * themselves or the group's owner, so a non-owner calling this simply
+ * gets an empty list back, not an error. */
+export async function getPendingJoinRequests(
+  groupId: string,
+): Promise<PendingJoinRequestRow[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("group_join_requests")
+    .select(
+      "id, group_id, user_id, created_at, profile:profiles(display_name, avatar_url, avatar_character_id)",
+    )
+    .eq("group_id", groupId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+
+  // Same untyped-embed caveat noted throughout this file.
+  const rows = (data ?? []) as unknown as {
+    id: string;
+    group_id: string;
+    user_id: string;
+    created_at: string;
+    profile: {
+      display_name: string | null;
+      avatar_url: string | null;
+      avatar_character_id: string | null;
+    } | null;
+  }[];
+
+  const iconByCharacterId = await getCharacterIconsByIds(
+    rows.map((r) => r.profile?.avatar_character_id ?? null),
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    group_id: row.group_id,
+    user_id: row.user_id,
+    created_at: row.created_at,
+    requester_display_name: row.profile?.display_name ?? null,
+    requester_avatar_url: row.profile?.avatar_url ?? null,
+    requester_avatar_character_icon_url: row.profile?.avatar_character_id
+      ? (iconByCharacterId.get(row.profile.avatar_character_id) ?? null)
+      : null,
+  }));
+}
+
+/** Shared by getPendingJoinRequests and getGroupLeaderboard — both need to
+ * turn a batch of profiles' avatar_character_id into icon_url without
+ * pulling down the whole ~155-row characters table on every call. */
+async function getCharacterIconsByIds(
+  characterIds: (string | null)[],
+): Promise<Map<string, string | null>> {
+  const ids = Array.from(new Set(characterIds.filter((id): id is string => !!id)));
+  const icons = new Map<string, string | null>();
+  if (ids.length === 0) return icons;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("characters")
+    .select("character_id, icon_url")
+    .in("character_id", ids);
+  if (error) throw error;
+
+  for (const row of data ?? []) {
+    icons.set(row.character_id as string, row.icon_url as string | null);
+  }
+  return icons;
+}
+
+/** The group's leaderboard — scores from the get_group_leaderboard() RPC
+ * (see the migration), then joined here with each scored user's profile
+ * for display, since the RPC itself only returns user_id (it doesn't know
+ * about the profiles table's display columns and shouldn't need to). */
+export async function getGroupLeaderboard(
+  groupId: string,
+): Promise<GroupLeaderboardRow[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("get_group_leaderboard", {
+    p_group_id: groupId,
+  });
+  if (error) throw error;
+
+  const rows = (data ?? []) as {
+    user_id: string;
+    points: number;
+    wins: number;
+    losses: number;
+    storyteller_games: number;
+    games_played: number;
+  }[];
+  if (rows.length === 0) return [];
+
+  const { data: profiles, error: profilesError } = await supabase
+    .from("profiles")
+    .select("id, display_name, avatar_url, avatar_character_id")
+    .in("id", rows.map((r) => r.user_id));
+  if (profilesError) throw profilesError;
+
+  const profileById = new Map(
+    (profiles ?? []).map((p) => [
+      p.id as string,
+      p as { display_name: string | null; avatar_url: string | null; avatar_character_id: string | null },
+    ]),
+  );
+  const iconByCharacterId = await getCharacterIconsByIds(
+    (profiles ?? []).map((p) => p.avatar_character_id as string | null),
+  );
+
+  return rows
+    .map((r) => {
+      const profile = profileById.get(r.user_id);
+      const avatarCharacterId = profile?.avatar_character_id ?? null;
+      return {
+        ...r,
+        display_name: profile?.display_name ?? null,
+        avatar_url: profile?.avatar_url ?? null,
+        avatar_character_id: avatarCharacterId,
+        avatar_character_icon_url: avatarCharacterId
+          ? (iconByCharacterId.get(avatarCharacterId) ?? null)
+          : null,
+      };
+    })
+    .sort((a, b) => b.points - a.points || b.wins - a.wins);
+}
+
+export interface GroupHistoryPage {
+  rows: GroupHistoryRow[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+/** The group detail page's History tab — one row per (game, player), via
+ * the get_group_game_history() RPC (see the migration). */
+export async function getGroupHistoryPage(
+  groupId: string,
+  page = 1,
+): Promise<GroupHistoryPage> {
+  const supabase = await createClient();
+  const pageSize = GROUP_HISTORY_PAGE_SIZE;
+  const safePage = Math.max(1, page);
+
+  const { data, error } = await supabase.rpc("get_group_game_history", {
+    p_group_id: groupId,
+    p_limit: pageSize,
+    p_offset: (safePage - 1) * pageSize,
+  });
+  if (error) throw error;
+
+  const rows = (data ?? []) as GroupHistoryRow[];
+  const totalCount = rows[0]?.total_count ?? 0;
+
+  return {
+    rows,
+    totalCount,
+    page: safePage,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(totalCount / pageSize)),
+  };
 }

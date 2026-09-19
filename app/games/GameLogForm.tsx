@@ -87,9 +87,10 @@ export function GameLogForm({
   mode: LogType;
   characters: Character[];
   scripts: ScriptPickerRow[];
-  /** Invite codes of groups the signed-in user belongs to — powers the
-   * autocomplete dropdown on the Group code(s) field below. */
-  groupCodeSuggestions: string[];
+  /** Name + invite code of every group the signed-in user belongs to —
+   * powers the autocomplete dropdown on the Group code(s) field below,
+   * shown as "Name - ID#" so the code alone isn't the only identifier. */
+  groupCodeSuggestions: { code: string; name: string }[];
 }) {
   const isDetailed = mode === "detailed";
   const router = useRouter();
@@ -268,7 +269,10 @@ export function GameLogForm({
           onChange={setGroupCodes}
           placeholder="Type a code and press Enter…"
           uppercase
-          suggestions={groupCodeSuggestions}
+          suggestions={groupCodeSuggestions.map((g) => ({
+            value: g.code,
+            label: `${g.name} - ${g.code}`,
+          }))}
         />
       </Field>
 

@@ -74,6 +74,13 @@ export interface Script {
   view_count: number;
   created_at: string;
   updated_at: string;
+  /** Auto-computed 1-6 (quarter-star) difficulty estimate — see
+   * compute_script_difficulty() (supabase/migrations/
+   * 20260918000003_script_difficulty_rating.sql through
+   * *_search_scripts_difficulty.sql, plus the v2 rework in
+   * *_script_difficulty_rating_v2*.sql). Null for a script uploaded before
+   * this existed, until it's re-saved. */
+  difficulty: number | null;
 }
 
 /** A row from the search_scripts() RPC — a subset of Script's columns (no
@@ -89,6 +96,7 @@ export interface ScriptSearchRow {
   view_count: number;
   like_count: number;
   created_at: string;
+  difficulty: number | null;
   total_count: number;
 }
 
@@ -108,6 +116,21 @@ export const SCRIPT_TYPE_LABELS: Record<ScriptType, string> = {
 };
 
 export const SCRIPTS_PAGE_SIZE = 20;
+
+/** Options for the /scripts "Difficulty" browse filter — whole-star
+ * minimums only (not every quarter-star step) to keep the <select> short;
+ * "1+" is left out since every script is at least 1 star, making it
+ * equivalent to "Any". Passed straight through as search_scripts()'s
+ * p_min_difficulty. */
+export const DIFFICULTY_FILTER_OPTIONS: readonly {
+  value: 2 | 3 | 4 | 5;
+  label: string;
+}[] = [
+  { value: 2, label: "2+ stars" },
+  { value: 3, label: "3+ stars" },
+  { value: 4, label: "4+ stars" },
+  { value: 5, label: "5+ stars" },
+];
 
 /** How /scripts orders its results — passed straight through to the
  * search_scripts() SQL function's own p_sort parameter (see
@@ -131,7 +154,9 @@ export type ScriptSortOrder =
   | "most_views"
   | "fewest_views"
   | "most_likes"
-  | "fewest_likes";
+  | "fewest_likes"
+  | "most_difficult"
+  | "least_difficult";
 
 export const DEFAULT_SCRIPT_SORT: ScriptSortOrder = "newest";
 
@@ -151,6 +176,8 @@ export const SCRIPT_SORT_LABELS: Record<ScriptSortOrder, string> = {
   fewest_likes: "Fewest likes",
   most_views: "Most views",
   fewest_views: "Fewest views",
+  most_difficult: "Most difficult",
+  least_difficult: "Least difficult",
 };
 
 export interface Character {
@@ -394,4 +421,181 @@ export interface GameStats {
    * character's team (that one feeds `roleBreakdown` instead). */
   goodWinRate: number | null;
   evilWinRate: number | null;
+}
+
+// --- Groups & Leaderboard ---------------------------------------------------
+// Mirrors supabase/migrations/20260918*_groups_feature_schema.sql and the
+// two migrations right after it (leaderboard/history functions,
+// group-covers storage bucket) — keep in sync.
+
+export type GroupVisibility = "private" | "public";
+
+export const GROUP_VISIBILITY_LABELS: Record<GroupVisibility, string> = {
+  private: "Private — requests need your approval",
+  public: "Public — anyone can join instantly",
+};
+
+/** A group's full row, including its points-distribution config. Every
+ * `*_mistake` column is the point value used instead of its plain
+ * counterpart when the logged game had `storyteller_mistakes = true` (see
+ * lib/game-actions.ts) — not a separate category of its own. */
+export interface Group {
+  id: string;
+  owner_id: string;
+  name: string;
+  description: string | null;
+  /** The group's "ID#" shown to users, e.g. "D4423" — one letter + 4
+   * digits (see generate_group_invite_code()). Also the free-text code
+   * used to tag a logged game to this group (GameLogForm's "Group
+   * code(s)" field) — the same column, two use cases. */
+  invite_code: string;
+  visibility: GroupVisibility;
+  cover_image_url: string | null;
+  /** "YYYY-MM-DD" or null. Both null = "no set date" (Diego's ask) — an
+   * open-ended group. */
+  playtime_start: string | null;
+  playtime_end: string | null;
+  count_wins: boolean;
+  win_points: number;
+  win_points_mistake: number;
+  count_losses: boolean;
+  loss_points: number;
+  loss_points_mistake: number;
+  /** On by default, same weight as a Win (3 points), -2 if a Storyteller
+   * mistake was noted — Diego's spec. */
+  count_storyteller: boolean;
+  storyteller_points: number;
+  storyteller_points_mistake: number;
+  created_at: string;
+}
+
+/** A group card on /groups — the full row plus the two things only the
+ * list view needs. */
+export interface GroupCardRow extends Group {
+  member_count: number;
+  my_role: "owner" | "member";
+}
+
+/** A public group as shown on the /groups/join browse list — deliberately
+ * not the full Group row (no points config, no playtime — that's for
+ * members only once they're in). */
+export interface PublicGroupRow {
+  id: string;
+  name: string;
+  description: string | null;
+  invite_code: string;
+  cover_image_url: string | null;
+  member_count: number;
+}
+
+export type GroupJoinRequestStatus = "pending" | "approved" | "rejected";
+
+/** One pending request, as the group owner sees it on the group's Players
+ * tab, with just enough of the requester's profile to show a name/avatar
+ * next to Approve/Reject. */
+export interface PendingJoinRequestRow {
+  id: string;
+  group_id: string;
+  user_id: string;
+  created_at: string;
+  requester_display_name: string | null;
+  requester_avatar_url: string | null;
+  requester_avatar_character_icon_url: string | null;
+}
+
+/** One row of the leaderboard (get_group_leaderboard() RPC, joined in
+ * lib/queries.ts with the corresponding profiles rows for display, plus
+ * each avatar_character_id's icon_url so cards don't need the full
+ * characters list just to render an avatar). A member with zero logged
+ * games still appears, at 0 points. */
+export interface GroupLeaderboardRow {
+  user_id: string;
+  points: number;
+  wins: number;
+  losses: number;
+  storyteller_games: number;
+  games_played: number;
+  display_name: string | null;
+  avatar_url: string | null;
+  avatar_character_id: string | null;
+  avatar_character_icon_url: string | null;
+}
+
+/** One (game, player) pair tagged to a group — the History tab's thin
+ * per-player cards (get_group_game_history() RPC). `team`/`won` are null
+ * for a free-text-only logged player (see GameLogForm's "Players" field —
+ * it captures names only, not team/result, today). */
+export interface GroupHistoryRow {
+  game_id: string;
+  played_at: string;
+  script_name: string | null;
+  self_is_storyteller: boolean;
+  storyteller_user_id: string | null;
+  storyteller_display_name: string | null;
+  player_user_id: string | null;
+  player_display_name: string | null;
+  team: Alignment | null;
+  won: boolean | null;
+  character_name: string | null;
+  character_icon_url: string | null;
+  total_count: number;
+}
+
+export const GROUPS_PAGE_SIZE = 20;
+export const GROUP_HISTORY_PAGE_SIZE = 30;
+
+/** Formats a group's playtime window the way Diego's spec showed it
+ * ("9/18/26-9/22/26") — M/D/YY, no leading zeros. Both null reads as
+ * "No set date"; either alone reads as an open-ended start/end. */
+export function formatGroupPlaytime(
+  start: string | null,
+  end: string | null,
+): string {
+  const fmt = (d: string) => {
+    const [y, m, day] = d.split("-");
+    return `${Number(m)}/${Number(day)}/${y.slice(2)}`;
+  };
+  if (!start && !end) return "No set date";
+  if (start && end) return `${fmt(start)} – ${fmt(end)}`;
+  if (start) return `Starts ${fmt(start)}`;
+  return `Ends ${fmt(end as string)}`;
+}
+
+/** The create-group form's points-distribution fields, camelCased for the
+ * client — createGroupAction (lib/group-actions.ts) reads these back off
+ * FormData with the matching snake_case names shown in each comment. */
+export interface GroupPointsConfig {
+  /** count_wins */
+  countWins: boolean;
+  /** win_points */
+  winPoints: number;
+  /** win_points_mistake */
+  winPointsMistake: number;
+  /** count_losses */
+  countLosses: boolean;
+  /** loss_points */
+  lossPoints: number;
+  /** loss_points_mistake */
+  lossPointsMistake: number;
+  /** count_storyteller */
+  countStoryteller: boolean;
+  /** storyteller_points */
+  storytellerPoints: number;
+  /** storyteller_points_mistake */
+  storytellerPointsMistake: number;
+}
+
+/** Mirrors the groups table's own column defaults (see the migration) —
+ * kept here too so the create-group form can render its initial values
+ * without a round trip. */
+export const DEFAULT_GROUP_POINTS_CONFIG: GroupPointsConfig = {
+  countWins: true,
+  winPoints: 3,
+  winPointsMistake: 1,
+  countLosses: true,
+  lossPoints: -3,
+  lossPointsMistake: -1,
+  countStoryteller: true,
+  storytellerPoints: 3,
+  storytellerPointsMistake: -2,
 }

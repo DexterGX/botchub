@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getRecentScripts } from "@/lib/queries";
+import { DifficultyStars } from "@/components/DifficultyStars";
 
 const QUICK_ACTIONS = [
   {
@@ -41,9 +42,9 @@ const QUICK_ACTIONS = [
   {
     href: "/groups",
     title: "Groups & leaderboards",
-    description: "Track standings with your regular playgroup. Coming soon.",
+    description: "Track standings with your regular playgroup.",
     icon: "🏆",
-    disabled: true,
+    disabled: false,
   },
 ] as const;
 
@@ -122,7 +123,10 @@ export default async function Home() {
                 href={`/scripts/${script.id}`}
                 className="rounded-2xl border border-black/[.08] p-5 transition-colors hover:border-zinc-400 dark:border-white/[.145] dark:hover:border-zinc-600"
               >
-                <div className="font-semibold">{script.name}</div>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="font-semibold">{script.name}</div>
+                  <DifficultyStars difficulty={script.difficulty} />
+                </div>
                 <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
                   by {script.author ?? "Unknown"}
                   {script.description ? ` · ${script.description}` : ""}

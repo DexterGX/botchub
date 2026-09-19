@@ -94,6 +94,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               <Link href="/games" className="hover:text-foreground">
                 Games
               </Link>
+              <Link href="/groups" className="hover:text-foreground">
+                Groups
+              </Link>
               {user ? (
                 <AccountMenu />
               ) : (

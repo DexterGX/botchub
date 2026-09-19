@@ -8,6 +8,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import {
   DEFAULT_SCRIPT_SORT,
+  DIFFICULTY_FILTER_OPTIONS,
   SCRIPT_SORT_LABELS,
   SCRIPT_TYPE_LABELS,
   TEAM_ORDER,
@@ -16,6 +17,7 @@ import {
   type ScriptType,
 } from "@/lib/types";
 import { CharacterFilterDropdown } from "./CharacterFilterDropdown";
+import { DifficultyStars } from "@/components/DifficultyStars";
 import { LikeButton } from "./LikeButton";
 import { SearchBox, SearchBoxFallback } from "./SearchBox";
 
@@ -31,6 +33,7 @@ interface ScriptsPageSearchParams {
   exclude?: string | string[];
   page?: string;
   sort?: string;
+  difficulty?: string;
 }
 
 const VALID_SORTS: readonly ScriptSortOrder[] = [
@@ -46,6 +49,8 @@ const VALID_SORTS: readonly ScriptSortOrder[] = [
   "fewest_views",
   "most_likes",
   "fewest_likes",
+  "most_difficult",
+  "least_difficult",
 ];
 
 /** Display order for the mobile "Order By" <select> — Newest/Oldest first
@@ -66,6 +71,8 @@ const SORT_SELECT_ORDER: readonly ScriptSortOrder[] = [
   "fewest_likes",
   "most_views",
   "fewest_views",
+  "most_difficult",
+  "least_difficult",
 ];
 
 interface ScriptsPageProps {
@@ -96,6 +103,7 @@ function buildHref(
     exclude: params.exclude,
     page: params.page,
     sort: params.sort,
+    difficulty: params.difficulty,
     ...overrides,
   };
 
@@ -110,7 +118,7 @@ function buildHref(
   return qsString ? `/scripts?${qsString}` : "/scripts";
 }
 
-type SortColumn = "name" | "author" | "type" | "likes" | "views";
+type SortColumn = "name" | "author" | "difficulty" | "type" | "likes" | "views";
 
 /** Every sortable column's asc/desc sort values plus which direction a
  * *first* click on that column should land on — text columns (Name/
@@ -124,6 +132,11 @@ const SORT_COLUMN_VALUES: Record<
 > = {
   name: { asc: "name_asc", desc: "name_desc", firstClick: "asc" },
   author: { asc: "author_asc", desc: "author_desc", firstClick: "asc" },
+  difficulty: {
+    asc: "least_difficult",
+    desc: "most_difficult",
+    firstClick: "desc",
+  },
   type: { asc: "type_asc", desc: "type_desc", firstClick: "asc" },
   likes: { asc: "fewest_likes", desc: "most_likes", firstClick: "desc" },
   views: { asc: "fewest_views", desc: "most_views", firstClick: "desc" },
@@ -277,6 +290,14 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
   const sort = VALID_SORTS.includes(params.sort as ScriptSortOrder)
     ? (params.sort as ScriptSortOrder)
     : DEFAULT_SCRIPT_SORT;
+  const parsedDifficulty = params.difficulty
+    ? Number(params.difficulty)
+    : NaN;
+  const minDifficulty = DIFFICULTY_FILTER_OPTIONS.some(
+    (opt) => opt.value === parsedDifficulty,
+  )
+    ? parsedDifficulty
+    : undefined;
 
   const supabase = await createClient();
   const [
@@ -295,6 +316,7 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
       excludeCharacterIds: exclude,
       page,
       sort,
+      minDifficulty,
     }),
     getOfficialCharactersForFilter(),
   ]);
@@ -319,6 +341,7 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
       author ||
       include.length > 0 ||
       exclude.length > 0 ||
+      minDifficulty !== undefined ||
       sort !== DEFAULT_SCRIPT_SORT,
   );
 
@@ -391,21 +414,42 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
             />
           </div>
 
+          {/* Difficulty floor — sits directly above "Order By" per
+              Diego's ask, at every breakpoint: full-width on its own row
+              on mobile (col-span-2, matching Order By's own span), a
+              normal pill among the others on sm+. "1+" is omitted since
+              every script is already >= 1 star (see
+              DIFFICULTY_FILTER_OPTIONS), so it'd be indistinguishable
+              from "Any". */}
+          <select
+            name="difficulty"
+            defaultValue={minDifficulty !== undefined ? String(minDifficulty) : ""}
+            className="col-span-2 w-full rounded-full border border-black/[.12] bg-white px-4 py-2 text-sm font-medium text-zinc-700 outline-none sm:col-span-1 sm:w-auto dark:border-white/[.15] dark:bg-zinc-900 dark:text-zinc-200"
+          >
+            <option value="">Difficulty: Any</option>
+            {DIFFICULTY_FILTER_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                Difficulty: {opt.label}
+              </option>
+            ))}
+          </select>
+
           {/* Mobile-only — the table's clickable column headers (Name/
-              Author/Type/Likes/Views) don't exist in the card layout below
-              `sm`, so this <select> is the only way to reach a non-default
-              sort on a phone, styled to match the Game <select> above per
-              Diego's request. It's also the "sort" field for the *whole*
-              form, at every width, not just when visible: `sm:hidden` on
-              this wrapper only changes CSS display, so at `sm` and up the
-              select still sits in the DOM (with its value pinned to the
-              sort currently active via header-link clicks) and still
-              submits normally — a hidden form field doesn't need the
-              `hidden` HTML attribute to submit, just a `name`. That's what
-              lets a desktop Filter click carry the active sort through
-              without a second, separately-named hidden input (which would
-              have collided with this select's own `name="sort"` and sent
-              two values for one param). */}
+              Author/Difficulty/Type/Likes/Views) don't exist in the card
+              layout below `sm`, so this <select> is the only way to reach
+              a non-default sort on a phone, styled to match the Game
+              <select> above per Diego's request. It's also the "sort"
+              field for the *whole* form, at every width, not just when
+              visible: `sm:hidden` on this wrapper only changes CSS
+              display, so at `sm` and up the select still sits in the DOM
+              (with its value pinned to the sort currently active via
+              header-link clicks) and still submits normally — a hidden
+              form field doesn't need the `hidden` HTML attribute to
+              submit, just a `name`. That's what lets a desktop Filter
+              click carry the active sort through without a second,
+              separately-named hidden input (which would have collided
+              with this select's own `name="sort"` and sent two values for
+              one param). */}
           <div className="col-span-2 flex items-center gap-2 sm:hidden">
             <label
               htmlFor="mobile-sort"
@@ -470,8 +514,9 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
                   >
                     {script.name}
                   </Link>
-                  <span className="shrink-0 text-xs text-zinc-500 dark:text-zinc-400">
+                  <span className="flex shrink-0 flex-col items-end gap-1 text-xs text-zinc-500 dark:text-zinc-400">
                     {SCRIPT_TYPE_LABELS[script.script_type]}
+                    <DifficultyStars difficulty={script.difficulty} />
                   </span>
                 </div>
 
@@ -532,12 +577,13 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
           <div className="mt-8 hidden overflow-x-auto rounded-2xl border border-black/[.08] dark:border-white/[.145] sm:block">
             <table className="w-full min-w-[720px] table-fixed text-left text-sm">
               <colgroup>
-                <col className="w-[34%]" />
-                <col className="w-[20%]" />
-                <col className="w-[12%]" />
-                <col className="w-[10%]" />
-                <col className="w-[10%]" />
+                <col className="w-[26%]" />
+                <col className="w-[16%]" />
                 <col className="w-[14%]" />
+                <col className="w-[11%]" />
+                <col className="w-[10%]" />
+                <col className="w-[10%]" />
+                <col className="w-[13%]" />
               </colgroup>
               <thead>
                 <tr className="border-b border-black/[.08] text-xs uppercase tracking-wide text-zinc-500 dark:border-white/[.145] dark:text-zinc-500">
@@ -564,6 +610,20 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
                       Author
                       <SortArrow
                         direction={sortDirectionFor(sort, "author")}
+                      />
+                    </Link>
+                  </th>
+                  <th className="px-4 py-3 font-semibold">
+                    <Link
+                      href={buildHref(params, {
+                        sort: nextSortFor(sort, "difficulty"),
+                        page: null,
+                      })}
+                      className="inline-flex items-center gap-1 hover:text-zinc-900 dark:hover:text-zinc-200"
+                    >
+                      Difficulty
+                      <SortArrow
+                        direction={sortDirectionFor(sort, "difficulty")}
                       />
                     </Link>
                   </th>
@@ -627,6 +687,9 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
                     </td>
                     <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
                       {script.author ?? "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <DifficultyStars difficulty={script.difficulty} />
                     </td>
                     <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
                       {SCRIPT_TYPE_LABELS[script.script_type]}
