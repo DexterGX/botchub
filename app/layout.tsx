@@ -64,7 +64,14 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         actually broken. See: https://react.dev/link/hydration-mismatch
       */}
       <body
-        className="min-h-full flex flex-col bg-zinc-50 text-zinc-900 dark:bg-black dark:text-zinc-50"
+        // Background color + the glow/dot texture now both live in
+        // globals.css's `body` rule (driven by the --background/--bg-glow/
+        // --bg-dot variables) so they can't drift out of sync with each
+        // other — this used to set a flat bg-zinc-50/dark:bg-black here
+        // that the textured background in globals.css then layered on top
+        // of, which worked but left two separate places defining "the
+        // page background."
+        className="min-h-full flex flex-col text-zinc-900 dark:text-zinc-50"
         suppressHydrationWarning
       >
         <Script

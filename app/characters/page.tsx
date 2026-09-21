@@ -5,6 +5,7 @@ import { searchCharacters } from "@/lib/queries";
 import {
   TEAM_LABELS,
   TEAM_ORDER,
+  characterWikiUrl,
   editionLabel,
   type Edition,
   type Team,
@@ -139,6 +140,23 @@ export default async function CharactersPage({
                         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
                           {c.ability}
                         </p>
+                      )}
+                      {/* Diego's ask (2026-09-21): a link out to the
+                          official wiki's page for the character. Only for
+                          official characters — homebrew ones have no wiki
+                          page to link to. Styled as a proper bordered
+                          pill button (follow-up ask, 2026-09-21) rather
+                          than a plain hyperlink, matching this app's other
+                          small buttons elsewhere. */}
+                      {!c.is_homebrew && (
+                        <a
+                          href={characterWikiUrl(c.name)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-2 inline-flex items-center gap-1 rounded-full border border-black/[.12] px-2.5 py-1 text-xs font-medium text-zinc-600 transition-colors hover:border-zinc-400 hover:text-foreground dark:border-white/[.15] dark:text-zinc-400 dark:hover:border-zinc-600"
+                        >
+                          More info ↗
+                        </a>
                       )}
                     </div>
                   </li>

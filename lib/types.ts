@@ -255,6 +255,19 @@ export function editionLabel(edition: Edition): string {
   return edition ? (EDITION_LABELS[edition] ?? edition) : "Custom";
 }
 
+/** The official Blood on the Clocktower wiki's page for a character, e.g.
+ * "Washerwoman" -> https://wiki.bloodontheclocktower.com/Washerwoman. The
+ * wiki (MediaWiki) uses underscores for spaces in its URLs; everything
+ * else (apostrophes, hyphens) is left as-is, matching how the wiki's own
+ * links are formed. Only meaningful for official characters — homebrew
+ * ones have no wiki page, so callers should gate this on
+ * `!character.is_homebrew`. */
+export function characterWikiUrl(name: string): string {
+  return `https://wiki.bloodontheclocktower.com/${encodeURIComponent(
+    name.replace(/ /g, "_"),
+  )}`;
+}
+
 export const TEAM_ORDER: Team[] = [
   "townsfolk",
   "outsider",
