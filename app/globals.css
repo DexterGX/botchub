@@ -43,23 +43,61 @@
   --bg-dot: rgba(255, 255, 255, 0.06);
 }
 
+/* When <body> has a background and <html> doesn't, the browser propagates
+ * body's background up to the page canvas — and once that happens, percent
+ * -based background-position/size on body are resolved against the
+ * *viewport*, not body's own (much taller, scrollable) box. That's what
+ * caused the follow-up bug Diego caught: the top glow's gradient tile was
+ * only ever as tall as the viewport, so on any page taller than one screen
+ * it repeated, and a visible seam landed wherever that repeat happened to
+ * fall — right above the footer on his window size. Giving <html> its own
+ * background opts out of that propagation, so body's background goes back
+ * to behaving like a normal element background sized to the real page. */
+html {
+  background: var(--background);
+}
+
 body {
   background-color: var(--background);
+  /* Diego's ask (2026-09-21): mirror the top glow at the bottom of the
+     page too, instead of the page fading to flat partway down and
+     staying flat through the footer. Two glows anchored near the top
+     (slightly above it) and two mirrored near the bottom (slightly below
+     it), each shown once — no-repeat below is what keeps these from
+     tiling back down the page the way the buggy version did. */
   background-image:
     radial-gradient(
-      ellipse 1800px 1000px at 15% -20%,
+      ellipse 1800px 1000px at 15% -10%,
       var(--bg-glow-1),
       transparent 70%
     ),
     radial-gradient(
-      ellipse 1800px 1000px at 85% -15%,
+      ellipse 1800px 1000px at 85% -8%,
+      var(--bg-glow-2),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 1800px 1000px at 85% 108%,
+      var(--bg-glow-1),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 1800px 1000px at 15% 106%,
       var(--bg-glow-2),
       transparent 70%
     ),
     radial-gradient(var(--bg-dot) 1px, transparent 1px);
+  background-repeat:
+    no-repeat,
+    no-repeat,
+    no-repeat,
+    no-repeat,
+    repeat;
   background-size:
-    100% 100%,
-    100% 100%,
+    auto,
+    auto,
+    auto,
+    auto,
     24px 24px;
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
