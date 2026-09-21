@@ -38,7 +38,13 @@ export function MobileNav({ loggedIn }: { loggedIn: boolean }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const onAccountPage = pathname === "/account";
-  const activeAccountTab = searchParams.get("tab") === "profile" ? "profile" : "overview";
+  const rawAccountTab = searchParams.get("tab");
+  const activeAccountTab =
+    rawAccountTab === "profile"
+      ? "profile"
+      : rawAccountTab === "favorites"
+        ? "favorites"
+        : "overview";
 
   useEffect(() => {
     if (!open) return;
@@ -95,7 +101,7 @@ export function MobileNav({ loggedIn }: { loggedIn: boolean }) {
             onClick={() => setOpen(false)}
             className={linkClasses}
           >
-            Games
+            Logs
           </Link>
           <Link
             href="/groups"
@@ -108,9 +114,9 @@ export function MobileNav({ loggedIn }: { loggedIn: boolean }) {
             <>
               {/* Diego's ask: stop sending mobile straight to one long
                   crammed /account page — instead surface the same
-                  Overview/Profile details split the >=lg sidebar already
-                  has, as its own labeled group here, separate from the
-                  Scripts/Characters/Games links above. */}
+                  Overview/Profile details/Favorites split the >=lg sidebar
+                  already has, as its own labeled group here, separate from
+                  the Scripts/Characters/Games links above. */}
               <div className="my-1 border-t border-black/[.08] dark:border-white/[.1]" />
               <div className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-600">
                 Account
@@ -138,6 +144,18 @@ export function MobileNav({ loggedIn }: { loggedIn: boolean }) {
                 }
               >
                 Profile details
+              </Link>
+              <Link
+                href="/account?tab=favorites"
+                onClick={() => setOpen(false)}
+                aria-current={onAccountPage && activeAccountTab === "favorites"}
+                className={
+                  onAccountPage && activeAccountTab === "favorites"
+                    ? activeLinkClasses
+                    : linkClasses
+                }
+              >
+                Favorites
               </Link>
             </>
           ) : (

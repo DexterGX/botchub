@@ -1,6 +1,13 @@
 "use client";
 
-import { useActionState, useEffect, useState, type ChangeEvent, type ReactNode } from "react";
+import {
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ReactNode,
+} from "react";
 import { useRouter } from "next/navigation";
 import { createGroupAction } from "@/lib/group-actions";
 import { INITIAL_GROUP_STATE } from "@/lib/group-action-state";
@@ -10,6 +17,12 @@ import {
 } from "@/lib/types";
 import { ToggleChip } from "@/app/games/components/ToggleChip";
 import { SegmentedControl } from "@/app/games/components/SegmentedControl";
+import { ImageCropperModal } from "@/components/ImageCropperModal";
+import {
+  GROUP_COVER_ASPECT,
+  GROUP_COVER_OUTPUT_HEIGHT,
+  GROUP_COVER_OUTPUT_WIDTH,
+} from "@/lib/cropImage";
 
 function Field({
   label,
@@ -122,6 +135,11 @@ export function CreateGroupForm() {
   const [hasPlaytime, setHasPlaytime] = useState(false);
   const [visibility, setVisibility] = useState<GroupVisibility>("private");
   const [coverPreviewUrl, setCoverPreviewUrl] = useState<string | null>(null);
+  // Raw, just-picked file shown inside the cropper modal — see the
+  // matching state/handlers in SettingsPanel.tsx for the full explanation;
+  // this form's cover photo uses the exact same cropper flow.
+  const [cropperSrc, setCropperSrc] = useState<string | null>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   // Revoke the previous object URL whenever it's replaced or the form
   // unmounts — these aren't garbage-collected on their own and this form
@@ -132,11 +150,47 @@ export function CreateGroupForm() {
     };
   }, [coverPreviewUrl]);
 
+  useEffect(() => {
+    return () => {
+      if (cropperSrc) URL.revokeObjectURL(cropperSrc);
+    };
+  }, [cropperSrc]);
+
   function handleCoverChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
+    if (!file) return;
+    setCropperSrc((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
+  }
+
+  function handleCropCancel() {
+    setCropperSrc((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    if (coverInputRef.current) coverInputRef.current.value = "";
+  }
+
+  // Same DataTransfer swap as SettingsPanel.tsx — createGroupAction's
+  // existing `formData.get("coverImage")` handling needs no changes.
+  function handleCropConfirm(blob: Blob) {
+    const croppedFile = new File([blob], "cover.jpg", { type: "image/jpeg" });
+    if (coverInputRef.current) {
+      const dt = new DataTransfer();
+      dt.items.add(croppedFile);
+      coverInputRef.current.files = dt.files;
+    }
+
     setCoverPreviewUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
-      return file ? URL.createObjectURL(file) : null;
+      return URL.createObjectURL(croppedFile);
+    });
+
+    setCropperSrc((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
     });
   }
 
@@ -188,6 +242,7 @@ export function CreateGroupForm() {
           />
         )}
         <input
+          ref={coverInputRef}
           name="coverImage"
           type="file"
           accept="image/png,image/jpeg,image/webp"
@@ -315,6 +370,17 @@ export function CreateGroupForm() {
           Cancel
         </button>
       </div>
+
+      {cropperSrc && (
+        <ImageCropperModal
+          imageSrc={cropperSrc}
+          aspect={GROUP_COVER_ASPECT}
+          outputWidth={GROUP_COVER_OUTPUT_WIDTH}
+          outputHeight={GROUP_COVER_OUTPUT_HEIGHT}
+          onCancel={handleCropCancel}
+          onConfirm={handleCropConfirm}
+        />
+      )}
     </form>
   );
 }

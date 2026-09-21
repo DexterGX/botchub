@@ -276,6 +276,7 @@ export default async function AccountPage({ searchParams }: AccountPageProps) {
           profile or Riot's account-management page is organized. */}
       <div className="hidden lg:block">
         <AccountDesktopShell
+          initialTabId={activeTab}
           sidebarHeader={
             <div className="text-center">
               <div className="mx-auto flex justify-center">

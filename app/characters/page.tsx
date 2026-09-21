@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { Suspense } from "react";
 import { searchCharacters } from "@/lib/queries";
 import {
   TEAM_LABELS,
@@ -8,6 +9,8 @@ import {
   type Edition,
   type Team,
 } from "@/lib/types";
+import { AutoApplyFilterForm } from "./AutoApplyFilterForm";
+import { SearchBox, SearchBoxFallback } from "./SearchBox";
 
 export const metadata = {
   title: "Character reference — BOTChub",
@@ -41,6 +44,8 @@ export default async function CharactersPage({
     characters: characters.filter((c) => c.team === t),
   })).filter((group) => group.characters.length > 0);
 
+  const hasFilters = Boolean(q || team || edition);
+
   return (
     <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-12">
       <h1 className="text-2xl font-semibold">Character reference</h1>
@@ -48,14 +53,13 @@ export default async function CharactersPage({
         {characters.length} character{characters.length === 1 ? "" : "s"}
       </p>
 
-      <form className="mt-6" action="/characters">
-        <input
-          type="search"
-          name="q"
-          defaultValue={q ?? ""}
-          placeholder="Search by name or ability…"
-          className="w-full rounded-full border border-black/[.12] bg-white px-4 py-2 text-sm outline-none focus:border-zinc-400 dark:border-white/[.15] dark:bg-zinc-900"
-        />
+      {/* Same "just start typing/picking and it filters" behavior as
+          /scripts — see AutoApplyFilterForm and SearchBox — instead of
+          requiring a separate Filter button click. */}
+      <AutoApplyFilterForm className="mt-6">
+        <Suspense fallback={<SearchBoxFallback initialValue={q ?? ""} />}>
+          <SearchBox initialValue={q ?? ""} />
+        </Suspense>
 
         <div className="mt-3 flex flex-wrap gap-3">
           <select
@@ -81,13 +85,7 @@ export default async function CharactersPage({
               </option>
             ))}
           </select>
-          <button
-            type="submit"
-            className="rounded-full bg-foreground px-5 py-2 text-sm font-medium text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc]"
-          >
-            Filter
-          </button>
-          {(q || team || edition) && (
+          {hasFilters && (
             <Link
               href="/characters"
               className="rounded-full border border-black/[.12] px-5 py-2 text-sm font-medium transition-colors hover:border-zinc-400 dark:border-white/[.15] dark:hover:border-zinc-600"
@@ -96,7 +94,7 @@ export default async function CharactersPage({
             </Link>
           )}
         </div>
-      </form>
+      </AutoApplyFilterForm>
 
       {characters.length === 0 ? (
         <p className="mt-10 text-sm text-zinc-600 dark:text-zinc-400">

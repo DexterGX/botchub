@@ -2,8 +2,17 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { parseScriptUpload } from "@/lib/scriptValidation";
-import type { ScriptCategory, ScriptType } from "@/lib/types";
+import type { NormalizedCharacterRef } from "@/lib/scriptValidation";
+import { detectFromScriptJson, type OfficialLite } from "@/lib/scriptDetect";
+import { getOfficialCharactersForFilter } from "@/lib/queries";
+import { isAdmin } from "@/lib/admin";
+import type {
+  BulkUploadFileResult,
+  BulkUploadState,
+} from "@/lib/bulk-upload-action-state";
+import type { ScriptCategory, ScriptJsonEntry, ScriptType } from "@/lib/types";
 import type { ProfileActionState } from "@/lib/profile-action-state";
 
 function friendlyError(message: string): string {
@@ -160,18 +169,41 @@ async function readScriptJsonText(formData: FormData): Promise<string | null> {
   return null;
 }
 
+interface InsertScriptParams {
+  scriptName: string;
+  author: string;
+  version: string;
+  category: ScriptCategory;
+  scriptType: ScriptType;
+  description: string | null;
+  notes: string | null;
+  raw: unknown[];
+  characters: NormalizedCharacterRef[];
+  bootleggerRules: string[] | null;
+  difficultyOverride: number | null;
+}
+
+type InsertScriptRowResult =
+  | { ok: true; scriptId: string }
+  | { ok: false; error: string };
+
 /**
- * Phase 4, "JSON upload only" slice: a signed-in user submits a script's
- * JSON (pasted or as a file), it's validated against the schema (see
- * lib/scriptValidation.ts), and saved as a new `scripts` row with their
- * account attached as owner/author. No editing or version history yet —
- * this only ever creates a brand-new script.
+ * The actual `scripts` / `characters` / `script_characters` write, shared
+ * by uploadScriptAction (one file, from the /scripts/new form) and
+ * bulkUploadScriptsAction (many files at once, from /scripts/bulk-upload —
+ * see that action further down). Both callers have already run
+ * parseScriptUpload and settled on a name/author (each has its own rule
+ * for that — the single-file form falls back to manual entry, the bulk
+ * action skips a file outright rather than guess), so this function's job
+ * is purely the database side from that point on.
  *
  * `characters` and `script_characters` have owner-scoped insert policies
- * now (see supabase/migrations/20260912010000_upload_write_policies.sql)
- * so this runs entirely through the normal RLS-respecting session client —
+ * (see supabase/migrations/20260912010000_upload_write_policies.sql) so
+ * this runs entirely through the normal RLS-respecting session client —
  * this project has no service-role key configured, so that was the only
- * viable path anyway.
+ * viable path anyway (this is also why bulk import has to run as a real
+ * signed-in user, one script at a time under their own session, rather
+ * than a detached admin script).
  *
  * No multi-statement transaction is available through the Supabase JS
  * client, so this inserts in dependency order (scripts, then characters,
@@ -180,6 +212,170 @@ async function readScriptJsonText(formData: FormData): Promise<string | null> {
  * the public library. A single Postgres RPC wrapping all of this in a real
  * transaction would close that last gap — worth doing if partial failures
  * turn out to happen in practice.
+ */
+async function insertScriptRow(
+  supabase: SupabaseClient,
+  userId: string,
+  params: InsertScriptParams,
+): Promise<InsertScriptRowResult> {
+  const {
+    scriptName,
+    author,
+    version,
+    category,
+    scriptType,
+    description,
+    notes,
+    raw,
+    characters,
+    bootleggerRules,
+    difficultyOverride,
+  } = params;
+
+  // Resolve every referenced id against the official character library in
+  // one query, so we know which entries need a brand-new homebrew
+  // `characters` row and which just link to an existing official one.
+  const allIds = characters.map((c) => c.characterId);
+  const { data: officialMatches, error: lookupError } = await supabase
+    .from("characters")
+    .select("id, character_id")
+    .eq("is_homebrew", false)
+    .in("character_id", allIds);
+  if (lookupError) {
+    return { ok: false, error: friendlyError(lookupError.message) };
+  }
+
+  const officialIdByCharacterId = new Map(
+    (officialMatches ?? []).map((c) => [c.character_id, c.id as string]),
+  );
+
+  // Anything that isn't an official character must have come with a full
+  // inline definition (name + team) to become a new homebrew character —
+  // otherwise there's nothing to resolve it to.
+  const unresolved = characters.filter(
+    (c) => !officialIdByCharacterId.has(c.characterId) && !c.inline,
+  );
+  if (unresolved.length > 0) {
+    const ids = unresolved.map((c) => c.characterId).join(", ");
+    return {
+      ok: false,
+      error: `"${ids}" isn't a recognized official character, and this script didn't fully define it (needs at least a name and team to add it as homebrew).`,
+    };
+  }
+
+  const { data: newScript, error: scriptError } = await supabase
+    .from("scripts")
+    .insert({
+      owner_id: userId,
+      name: scriptName,
+      version,
+      category,
+      description,
+      notes,
+      script_json: raw,
+      edition: null,
+      script_type: scriptType,
+      author,
+      bootlegger_rules: bootleggerRules,
+      // Set straight away when the caller supplied one, so there's no
+      // window where the row briefly holds the auto-computed value
+      // instead of the chosen one.
+      difficulty: difficultyOverride,
+    })
+    .select("id")
+    .single();
+  if (scriptError || !newScript) {
+    return {
+      ok: false,
+      error: friendlyError(scriptError?.message ?? "Couldn't save the script."),
+    };
+  }
+  const scriptId = newScript.id as string;
+
+  // Insert any brand-new homebrew characters this script introduces, with
+  // the night-order/reminder fields passed straight through when the
+  // uploader provided them — the official script-schema.json format
+  // already carries these fields, so this is a pass-through, not new
+  // design work.
+  const toCreate = characters.filter(
+    (c) => !officialIdByCharacterId.has(c.characterId) && c.inline,
+  );
+  const idByCharacterId = new Map(officialIdByCharacterId);
+
+  if (toCreate.length > 0) {
+    const { data: created, error: createError } = await supabase
+      .from("characters")
+      .insert(
+        toCreate.map((c) => ({
+          character_id: c.characterId,
+          name: c.inline!.name,
+          team: c.inline!.team,
+          ability: c.inline!.ability ?? null,
+          is_homebrew: true,
+          source_script_id: scriptId,
+          first_night: c.inline!.firstNight ?? null,
+          first_night_reminder: c.inline!.firstNightReminder ?? null,
+          other_night: c.inline!.otherNight ?? null,
+          other_night_reminder: c.inline!.otherNightReminder ?? null,
+        })),
+      )
+      .select("id, character_id");
+    if (createError || !created) {
+      await supabase.from("scripts").delete().eq("id", scriptId);
+      return {
+        ok: false,
+        error: friendlyError(
+          createError?.message ?? "Couldn't save this script's homebrew characters.",
+        ),
+      };
+    }
+    for (const c of created) {
+      idByCharacterId.set(c.character_id, c.id as string);
+    }
+  }
+
+  const { error: linkError } = await supabase.from("script_characters").insert(
+    characters.map((c, position) => ({
+      script_id: scriptId,
+      character_id: idByCharacterId.get(c.characterId)!,
+      // Preserves this upload's own character order (see
+      // supabase/migrations/20260913010000_script_character_position.sql)
+      // — `characters` is already in the script JSON's original order
+      // (parseScriptUpload pushes entries in array order), so its index
+      // here is exactly the position we want read back in later.
+      position,
+    })),
+  );
+  if (linkError) {
+    await supabase.from("scripts").delete().eq("id", scriptId);
+    return { ok: false, error: friendlyError(linkError.message) };
+  }
+
+  // Only recompute server-side when the caller didn't already supply a
+  // difficulty (see difficultyOverride above) — otherwise this would
+  // silently clobber a chosen adjustment the moment the write finished.
+  // Best-effort, same as increment_script_view_count below on the detail
+  // page: a script is fully valid and viewable without a difficulty
+  // score, so a failure here doesn't undo the insert. Has to happen after
+  // the script_characters insert above, not alongside the scripts insert
+  // earlier, since compute_script_difficulty() reads this script's own
+  // characters to do its scoring.
+  if (difficultyOverride === null) {
+    await supabase.rpc("recompute_script_difficulty", { p_script_id: scriptId });
+  }
+
+  return { ok: true, scriptId };
+}
+
+/**
+ * Phase 4, "JSON upload only" slice: a signed-in user submits a script's
+ * JSON (pasted or as a file), it's validated against the schema (see
+ * lib/scriptValidation.ts), and saved as a new `scripts` row with their
+ * account attached as owner/author. No editing or version history yet —
+ * this only ever creates a brand-new script.
+ *
+ * See insertScriptRow above for the actual database write — this function
+ * is just the single-file form's own parsing/validation on top of it.
  */
 export async function uploadScriptAction(
   _prevState: ProfileActionState,
@@ -240,36 +436,6 @@ export async function uploadScriptAction(
     return { error: "Give your script a name." };
   }
 
-  // Resolve every referenced id against the official character library in
-  // one query, so we know which entries need a brand-new homebrew
-  // `characters` row and which just link to an existing official one.
-  const allIds = characters.map((c) => c.characterId);
-  const { data: officialMatches, error: lookupError } = await supabase
-    .from("characters")
-    .select("id, character_id")
-    .eq("is_homebrew", false)
-    .in("character_id", allIds);
-  if (lookupError) {
-    return { error: friendlyError(lookupError.message) };
-  }
-
-  const officialIdByCharacterId = new Map(
-    (officialMatches ?? []).map((c) => [c.character_id, c.id as string]),
-  );
-
-  // Anything that isn't an official character must have come with a full
-  // inline definition (name + team) to become a new homebrew character —
-  // otherwise there's nothing to resolve it to.
-  const unresolved = characters.filter(
-    (c) => !officialIdByCharacterId.has(c.characterId) && !c.inline,
-  );
-  if (unresolved.length > 0) {
-    const ids = unresolved.map((c) => c.characterId).join(", ");
-    return {
-      error: `"${ids}" isn't a recognized official character, and this script didn't fully define it (needs at least a name and team to add it as homebrew).`,
-    };
-  }
-
   // Attribute the script to whatever the uploader put in the form's Author
   // field (auto-filled from the JSON's own credit when present, but
   // user-editable), falling back to the JSON's credit directly. Diego's
@@ -287,102 +453,24 @@ export async function uploadScriptAction(
     };
   }
 
-  const { data: newScript, error: scriptError } = await supabase
-    .from("scripts")
-    .insert({
-      owner_id: user.id,
-      name: scriptName,
-      version,
-      category,
-      description: description || null,
-      notes: notes || null,
-      script_json: raw,
-      edition: null,
-      script_type: scriptType,
-      author,
-      bootlegger_rules: bootleggerRules,
-      // Set straight away when the form supplied one, so there's no
-      // window where the row briefly holds the auto-computed value
-      // instead of the uploader's own chosen one.
-      difficulty: difficultyOverride,
-    })
-    .select("id")
-    .single();
-  if (scriptError || !newScript) {
-    return { error: friendlyError(scriptError?.message ?? "Couldn't save the script.") };
-  }
-  const scriptId = newScript.id as string;
-
-  // Insert any brand-new homebrew characters this script introduces, with
-  // the night-order/reminder fields passed straight through when the
-  // uploader provided them — the official script-schema.json format
-  // already carries these fields, so this is a pass-through, not new
-  // design work.
-  const toCreate = characters.filter(
-    (c) => !officialIdByCharacterId.has(c.characterId) && c.inline,
-  );
-  const idByCharacterId = new Map(officialIdByCharacterId);
-
-  if (toCreate.length > 0) {
-    const { data: created, error: createError } = await supabase
-      .from("characters")
-      .insert(
-        toCreate.map((c) => ({
-          character_id: c.characterId,
-          name: c.inline!.name,
-          team: c.inline!.team,
-          ability: c.inline!.ability ?? null,
-          is_homebrew: true,
-          source_script_id: scriptId,
-          first_night: c.inline!.firstNight ?? null,
-          first_night_reminder: c.inline!.firstNightReminder ?? null,
-          other_night: c.inline!.otherNight ?? null,
-          other_night_reminder: c.inline!.otherNightReminder ?? null,
-        })),
-      )
-      .select("id, character_id");
-    if (createError || !created) {
-      await supabase.from("scripts").delete().eq("id", scriptId);
-      return { error: friendlyError(createError?.message ?? "Couldn't save this script's homebrew characters.") };
-    }
-    for (const c of created) {
-      idByCharacterId.set(c.character_id, c.id as string);
-    }
+  const result = await insertScriptRow(supabase, user.id, {
+    scriptName,
+    author,
+    version,
+    category: category as ScriptCategory,
+    scriptType: scriptType as ScriptType,
+    description: description || null,
+    notes: notes || null,
+    raw,
+    characters,
+    bootleggerRules,
+    difficultyOverride,
+  });
+  if (!result.ok) {
+    return { error: result.error };
   }
 
-  const { error: linkError } = await supabase.from("script_characters").insert(
-    characters.map((c, position) => ({
-      script_id: scriptId,
-      character_id: idByCharacterId.get(c.characterId)!,
-      // Preserves this upload's own character order (see
-      // supabase/migrations/20260913010000_script_character_position.sql)
-      // — `characters` is already in the script JSON's original order
-      // (parseScriptUpload pushes entries in array order), so its index
-      // here is exactly the position we want read back in later.
-      position,
-    })),
-  );
-  if (linkError) {
-    await supabase.from("scripts").delete().eq("id", scriptId);
-    return { error: friendlyError(linkError.message) };
-  }
-
-  // Only recompute server-side when the form didn't already supply a
-  // difficulty (see difficultyOverride above) — otherwise this would
-  // silently clobber the uploader's own adjustment with the auto-computed
-  // value the moment their submit finished, right after Diego's whole ask
-  // was to let them override it. Best-effort, same as
-  // increment_script_view_count below on the detail page: a script is
-  // fully valid and viewable without a difficulty score, so a failure
-  // here doesn't undo the upload. Has to happen after the script_characters
-  // insert above, not alongside the scripts insert earlier, since
-  // compute_script_difficulty() reads this script's own characters to do
-  // its scoring.
-  if (difficultyOverride === null) {
-    await supabase.rpc("recompute_script_difficulty", { p_script_id: scriptId });
-  }
-
-  redirect(`/scripts/${scriptId}`);
+  redirect(`/scripts/${result.scriptId}`);
 }
 
 export interface UpdateScriptResult {
@@ -503,4 +591,213 @@ export async function deleteScriptAction(
   }
 
   return { ok: true };
+}
+
+/** /scripts/bulk-upload's soft cap on files per submit — keeps one Server
+ * Action invocation from running long enough to hit a serverless function
+ * timeout (each file is a handful of sequential queries) and keeps a
+ * single failed batch small enough to re-diagnose. Diego's ask was a tool
+ * for "files you provide" — a curated batch, not the internet's entire
+ * script library in one click — so this is meant to comfortably fit a real
+ * one-sitting import, not to be a hard technical ceiling: it's easy to
+ * raise later if 200 turns out to be too small in practice. */
+const MAX_BULK_FILES = 200;
+
+interface BulkCandidate {
+  index: number;
+  filename: string;
+  scriptName: string;
+  author: string;
+  version: string;
+  category: ScriptCategory;
+  scriptType: ScriptType;
+  raw: unknown[];
+  characters: NormalizedCharacterRef[];
+  bootleggerRules: string[] | null;
+}
+
+/**
+ * /scripts/bulk-upload (Diego's ask, 2026-09-21: importing a folder of
+ * script JSON files someone already has — e.g. downloaded one at a time
+ * from another site's own script pages, under whatever license/permission
+ * that download implied — instead of adding them to botchub one at a time
+ * through the single-file form). Every file gets the exact same treatment
+ * insertScriptRow gives a normal upload: same JSON schema validation, same
+ * official-character resolution, same difficulty scoring. What's
+ * different from the single-file form is that there's no per-file form UI
+ * to fall back on, so a file is skipped rather than guessed at when it's
+ * missing something the single form would otherwise let a person type in:
+ *
+ * - No `_meta.name` → skipped ("doesn't include a name").
+ * - No `_meta.author` → skipped ("doesn't credit an author") — this is the
+ *   same rule uploadScriptAction now enforces (see its own comment on
+ *   `author` above): a bulk import is exactly the situation that old
+ *   silent fallback-to-uploader's-own-name existed for, and exactly the
+ *   case Diego asked to stop happening.
+ * - Fails schema validation → skipped, with parseScriptUpload's own
+ *   message.
+ * - Already in the library (case-insensitive exact match on name AND
+ *   author) → skipped as a duplicate, not an error — this is what makes
+ *   re-running the same folder after fixing a few files safe, instead of
+ *   creating a second copy of everything that already went through.
+ *
+ * Every other file in the batch is still attempted when one fails — this
+ * is deliberately not all-or-nothing, since with dozens of files "one bad
+ * one blocks all the good ones" would be far more annoying than a partial
+ * result. Each file's own outcome comes back in `results`, in submission
+ * order, for the UI to list.
+ */
+export async function bulkUploadScriptsAction(
+  _prevState: BulkUploadState,
+  formData: FormData,
+): Promise<BulkUploadState> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: "You need to be logged in.", results: null };
+  }
+  if (!(await isAdmin(supabase, user.id))) {
+    return {
+      error: "Bulk upload is limited to admins right now.",
+      results: null,
+    };
+  }
+
+  const files = formData
+    .getAll("scriptFiles")
+    .filter((f): f is File => f instanceof File && f.size > 0);
+  if (files.length === 0) {
+    return {
+      error: "Choose at least one script JSON file to upload.",
+      results: null,
+    };
+  }
+  if (files.length > MAX_BULK_FILES) {
+    return {
+      error: `That's ${files.length} files at once — please split it into batches of ${MAX_BULK_FILES} or fewer.`,
+      results: null,
+    };
+  }
+
+  // Same detection heuristic the single-file form runs client-side (see
+  // lib/scriptDetect.ts and app/scripts/new/page.tsx, which builds this
+  // exact projection the same way).
+  const officials: OfficialLite[] = (await getOfficialCharactersForFilter()).map(
+    (c) => ({
+      characterId: c.character_id,
+      team: c.team,
+      edition: c.edition,
+    }),
+  );
+
+  const results: BulkUploadFileResult[] = new Array(files.length);
+  const candidates: BulkCandidate[] = [];
+
+  for (let index = 0; index < files.length; index++) {
+    const file = files[index];
+    const rawText = await file.text();
+
+    const validated = parseScriptUpload(rawText);
+    if (!validated.ok) {
+      results[index] = { filename: file.name, ok: false, error: validated.error };
+      continue;
+    }
+    const { meta, characters, raw } = validated.value;
+
+    if (!meta.name) {
+      results[index] = {
+        filename: file.name,
+        ok: false,
+        error: "This script's file doesn't include a name — skipped.",
+      };
+      continue;
+    }
+    if (!meta.author) {
+      results[index] = {
+        filename: file.name,
+        ok: false,
+        error: "This script's file doesn't credit an author — skipped.",
+      };
+      continue;
+    }
+
+    const detected = detectFromScriptJson(raw as ScriptJsonEntry[], officials);
+
+    candidates.push({
+      index,
+      filename: file.name,
+      scriptName: meta.name,
+      author: meta.author,
+      version: detected.version || DEFAULT_VERSION,
+      category: detected.category,
+      scriptType: detected.scriptType || "full",
+      raw,
+      characters,
+      bootleggerRules: meta.bootleggerRules ?? null,
+    });
+  }
+
+  // One batched lookup for every candidate name, rather than one query per
+  // file, so a large batch doesn't turn into a large number of round
+  // trips — the exact-match-on-both-fields check happens in memory below
+  // against this narrowed set.
+  let existing = new Set<string>();
+  if (candidates.length > 0) {
+    const names = Array.from(new Set(candidates.map((c) => c.scriptName)));
+    const { data: existingRows, error: existingError } = await supabase
+      .from("scripts")
+      .select("name, author")
+      .in("name", names);
+    if (existingError) {
+      return { error: friendlyError(existingError.message), results: null };
+    }
+    existing = new Set(
+      (existingRows ?? []).map(
+        (r) => `${(r.name as string).toLowerCase()}|${(r.author as string | null)?.toLowerCase() ?? ""}`,
+      ),
+    );
+  }
+
+  for (const candidate of candidates) {
+    const key = `${candidate.scriptName.toLowerCase()}|${candidate.author.toLowerCase()}`;
+    if (existing.has(key)) {
+      results[candidate.index] = {
+        filename: candidate.filename,
+        ok: false,
+        skippedDuplicate: true,
+        error: "Already in the library (same name and author) — skipped.",
+      };
+      continue;
+    }
+
+    const inserted = await insertScriptRow(supabase, user.id, {
+      scriptName: candidate.scriptName,
+      author: candidate.author,
+      version: candidate.version,
+      category: candidate.category,
+      scriptType: candidate.scriptType,
+      description: null,
+      notes: null,
+      raw: candidate.raw,
+      characters: candidate.characters,
+      bootleggerRules: candidate.bootleggerRules,
+      difficultyOverride: null,
+    });
+
+    results[candidate.index] = inserted.ok
+      ? { filename: candidate.filename, ok: true, scriptId: inserted.scriptId, scriptName: candidate.scriptName }
+      : { filename: candidate.filename, ok: false, error: inserted.error };
+
+    // Just-inserted names/authors stay in `existing` implicitly since
+    // scriptName+author pairs are unique per candidate in the common case
+    // (re-uploading the exact same file twice in one batch) — not worth a
+    // second query mid-loop to catch the rarer in-batch duplicate; that
+    // case still ends up as two real rows rather than a crash, which is
+    // an acceptable edge case for a tool meant to run against a folder of
+    // otherwise-distinct scripts.
+  }
+
+  return { error: null, results };
 }

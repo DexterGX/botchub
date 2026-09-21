@@ -69,13 +69,13 @@ export function AccountMenu() {
           role="menu"
           className="absolute right-0 top-full z-50 mt-2 w-40 rounded-xl border border-black/[.12] bg-white p-1.5 shadow-lg dark:border-white/[.15] dark:bg-zinc-900"
         >
-          {/* Two links instead of one "Settings" — /account's own <lg
-              layout now shows exactly one section at a time (Overview or
-              Profile details, picked via ?tab=), the same split MobileNav's
-              hamburger offers below `sm`. Without this, a tablet-width
-              visitor (>=sm, <lg — where this dropdown, not the hamburger,
-              is what's shown) would have no way to reach Profile details
-              at all. */}
+          {/* Three links instead of one "Settings" — /account's own <lg
+              layout now shows exactly one section at a time (Overview,
+              Profile details, or Favorites, picked via ?tab=), the same
+              split MobileNav's hamburger offers below `sm`. Without this, a
+              tablet-width visitor (>=sm, <lg — where this dropdown, not the
+              hamburger, is what's shown) would have no way to reach Profile
+              details or Favorites at all. */}
           <Link
             href="/account?tab=overview"
             role="menuitem"
@@ -91,6 +91,14 @@ export function AccountMenu() {
             className="block rounded-lg px-3 py-2 text-sm font-medium text-zinc-600 hover:bg-black/[.04] dark:text-zinc-400 dark:hover:bg-white/[.06]"
           >
             Profile details
+          </Link>
+          <Link
+            href="/account?tab=favorites"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="block rounded-lg px-3 py-2 text-sm font-medium text-zinc-600 hover:bg-black/[.04] dark:text-zinc-400 dark:hover:bg-white/[.06]"
+          >
+            Favorites
           </Link>
           <div className="my-1 border-t border-black/[.08] dark:border-white/[.1]" />
           <form action={signOutAction}>

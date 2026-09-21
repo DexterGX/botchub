@@ -1,6 +1,12 @@
 "use client";
 
-import { useActionState, useEffect, useState, type ChangeEvent } from "react";
+import {
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from "react";
 import { useRouter } from "next/navigation";
 import {
   updateGroupCoverAction,
@@ -9,6 +15,12 @@ import {
 } from "@/lib/group-actions";
 import { INITIAL_GROUP_STATE } from "@/lib/group-action-state";
 import type { Group, GroupLeaderboardRow } from "@/lib/types";
+import { ImageCropperModal } from "@/components/ImageCropperModal";
+import {
+  GROUP_COVER_ASPECT,
+  GROUP_COVER_OUTPUT_HEIGHT,
+  GROUP_COVER_OUTPUT_WIDTH,
+} from "@/lib/cropImage";
 
 const fieldClasses =
   "rounded-2xl border border-black/[.08] p-4 dark:border-white/[.145]";
@@ -44,12 +56,24 @@ export function SettingsPanel({
   // flips happen in plain event handlers (never inside an effect), so
   // there's no cascading-setState-in-effect concern here.
   const [coverDirty, setCoverDirty] = useState(false);
+  // Raw, just-picked file's object URL, shown inside the cropper modal —
+  // separate from `coverPreviewUrl` (the final, already-cropped preview
+  // shown on the form itself) so cancelling the cropper never disturbs
+  // whatever cropped cover was already staged.
+  const [cropperSrc, setCropperSrc] = useState<string | null>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     return () => {
       if (coverPreviewUrl) URL.revokeObjectURL(coverPreviewUrl);
     };
   }, [coverPreviewUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (cropperSrc) URL.revokeObjectURL(cropperSrc);
+    };
+  }, [cropperSrc]);
 
   // "Saved" reads off the action's own settled state (a fresh object once
   // it completes, still the imported constant on first render) rather than
@@ -62,12 +86,47 @@ export function SettingsPanel({
     coverState !== INITIAL_GROUP_STATE &&
     !coverState.error;
 
+  // Opens the cropper on the raw picked file instead of using it directly
+  // — the actual `coverImage` input value (and therefore `coverPreviewUrl`)
+  // only gets set once the crop is confirmed, in handleCropConfirm below.
   function handleCoverChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
+    if (!file) return;
+    setCropperSrc((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
+  }
+
+  function handleCropCancel() {
+    setCropperSrc((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    if (coverInputRef.current) coverInputRef.current.value = "";
+  }
+
+  // Swaps the cropped Blob onto the real file input via the DataTransfer
+  // API so `updateGroupCoverAction`'s existing `formData.get("coverImage")`
+  // handling needs no changes at all — it just sees a File, same as if the
+  // user had picked an already-cropped image directly.
+  function handleCropConfirm(blob: Blob) {
+    const croppedFile = new File([blob], "cover.jpg", { type: "image/jpeg" });
+    if (coverInputRef.current) {
+      const dt = new DataTransfer();
+      dt.items.add(croppedFile);
+      coverInputRef.current.files = dt.files;
+    }
+
     setCoverDirty(true);
     setCoverPreviewUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
-      return file ? URL.createObjectURL(file) : null;
+      return URL.createObjectURL(croppedFile);
+    });
+
+    setCropperSrc((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
     });
   }
 
@@ -135,6 +194,7 @@ export function SettingsPanel({
           )}
           <div className="flex flex-wrap items-center gap-3">
             <input
+              ref={coverInputRef}
               name="coverImage"
               type="file"
               accept="image/png,image/jpeg,image/webp"
@@ -278,6 +338,17 @@ export function SettingsPanel({
           </p>
         )}
       </section>
+
+      {cropperSrc && (
+        <ImageCropperModal
+          imageSrc={cropperSrc}
+          aspect={GROUP_COVER_ASPECT}
+          outputWidth={GROUP_COVER_OUTPUT_WIDTH}
+          outputHeight={GROUP_COVER_OUTPUT_HEIGHT}
+          onCancel={handleCropCancel}
+          onConfirm={handleCropConfirm}
+        />
+      )}
     </div>
   );
 }

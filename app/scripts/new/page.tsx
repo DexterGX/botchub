@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getOfficialCharactersForFilter } from "@/lib/queries";
+import { isAdmin } from "@/lib/admin";
 import { ScriptUploadForm } from "./ScriptUploadForm";
 
 export const metadata = {
@@ -15,6 +16,11 @@ export default async function NewScriptPage() {
   } = await supabase.auth.getUser();
 
   if (!user) redirect("/login");
+
+  // /scripts/bulk-upload is admin-only (Diego's ask, 2026-09-21) — no
+  // point advertising a link that would just bounce a non-admin back
+  // here. See lib/admin.ts.
+  const userIsAdmin = await isAdmin(supabase, user.id);
 
   // A lean id/team/edition-only projection of the official character
   // library, handed to the client form so it can auto-detect Script Type
@@ -47,7 +53,7 @@ export default async function NewScriptPage() {
         account; no sign-up needed beyond being logged in.
       </p>
 
-      <ScriptUploadForm officials={officials} />
+      <ScriptUploadForm officials={officials} showBulkUploadLink={userIsAdmin} />
     </main>
   );
 }

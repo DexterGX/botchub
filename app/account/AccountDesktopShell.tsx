@@ -23,12 +23,21 @@ export function AccountDesktopShell({
   sidebarHeader,
   tabs,
   sidebarFooter,
+  initialTabId,
 }: {
   sidebarHeader: ReactNode;
   tabs: AccountTab[];
   sidebarFooter?: ReactNode;
+  /** page.tsx's own `activeTab` (derived from `?tab=`) — this component
+   * is otherwise all client-side state with no URL syncing (see the doc
+   * comment above), so without this the desktop layout always opened on
+   * the first tab no matter which one a link (the header's Account
+   * dropdown, MobileNav) actually pointed at. Bug Diego caught
+   * (2026-09-22): clicking "Favorites" or "Profile details" landed on
+   * Overview every time. */
+  initialTabId?: string;
 }) {
-  const [activeId, setActiveId] = useState(tabs[0]?.id);
+  const [activeId, setActiveId] = useState(initialTabId ?? tabs[0]?.id);
   const active = tabs.find((tab) => tab.id === activeId) ?? tabs[0];
 
   return (
