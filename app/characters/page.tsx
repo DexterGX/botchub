@@ -5,6 +5,7 @@ import { searchCharacters } from "@/lib/queries";
 import {
   TEAM_LABELS,
   TEAM_ORDER,
+  characterWikiUrl,
   editionLabel,
   type Edition,
   type Team,
@@ -139,6 +140,20 @@ export default async function CharactersPage({
                         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
                           {c.ability}
                         </p>
+                      )}
+                      {/* Diego's ask (2026-09-21): a link out to the
+                          official wiki's page for the character. Only for
+                          official characters — homebrew ones have no wiki
+                          page to link to. */}
+                      {!c.is_homebrew && (
+                        <a
+                          href={characterWikiUrl(c.name)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-zinc-500 hover:text-foreground dark:text-zinc-400"
+                        >
+                          More info ↗
+                        </a>
                       )}
                     </div>
                   </li>
