@@ -16,6 +16,7 @@ import {
   type ScriptSortOrder,
   type ScriptType,
 } from "@/lib/types";
+import { AutoApplyFilterForm } from "./AutoApplyFilterForm";
 import { CharacterFilterDropdown } from "./CharacterFilterDropdown";
 import { DifficultyStars } from "@/components/DifficultyStars";
 import { LikeButton } from "./LikeButton";
@@ -362,16 +363,18 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
       </div>
 
       {/* Below `sm`, every control goes full-width in a 2-column grid
-          (Author+Game, Include+Exclude, Order By, Filter+Clear) instead of
-          the single-file stack a plain flex-wrap row produces on a narrow
+          (Author+Game, Include+Exclude, Order By, Clear) instead of the
+          single-file stack a plain flex-wrap row produces on a narrow
           screen — `sm:contents` on each grouping wrapper below then
           dissolves it back into the normal flex-wrap row at `sm:` and up,
           where these pills have always fit several to a line. On `sm` and
           up, sorting instead lives on the clickable column headers below
           — the mobile-only "Order By" <select> further down doubles as
           that sort value's carrier at every width (see its own comment),
-          so there's no separate hidden input for it here. */}
-      <form className="mt-6" action="/scripts">
+          so there's no separate hidden input for it here. Every field
+          here applies itself (see AutoApplyFilterForm) — there's no
+          Filter button to click anymore. */}
+      <AutoApplyFilterForm className="mt-6">
         <Suspense fallback={<SearchBoxFallback initialValue={q} />}>
           <SearchBox initialValue={q} />
         </Suspense>
@@ -443,13 +446,13 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
               visible: `sm:hidden` on this wrapper only changes CSS
               display, so at `sm` and up the select still sits in the DOM
               (with its value pinned to the sort currently active via
-              header-link clicks) and still submits normally — a hidden
-              form field doesn't need the `hidden` HTML attribute to
-              submit, just a `name`. That's what lets a desktop Filter
-              click carry the active sort through without a second,
-              separately-named hidden input (which would have collided
-              with this select's own `name="sort"` and sent two values for
-              one param). */}
+              header-link clicks) and still submits/auto-applies normally
+              — a hidden form field doesn't need the `hidden` HTML
+              attribute to be included, just a `name`. That's what lets
+              AutoApplyFilterForm carry the active sort through on any
+              other field's change, without a second, separately-named
+              hidden input (which would have collided with this select's
+              own `name="sort"` and sent two values for one param). */}
           <div className="col-span-2 flex items-center gap-2 sm:hidden">
             <label
               htmlFor="mobile-sort"
@@ -471,24 +474,18 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
             </select>
           </div>
 
-          <div className="col-span-2 flex gap-3 sm:contents">
-            <button
-              type="submit"
-              className="flex-1 rounded-full bg-foreground px-5 py-2 text-sm font-medium text-background transition-colors hover:bg-[#383838] sm:flex-none dark:hover:bg-[#ccc]"
-            >
-              Filter
-            </button>
-            {hasFilters && (
+          {hasFilters && (
+            <div className="col-span-2 sm:contents">
               <Link
                 href="/scripts"
-                className="flex-1 rounded-full border border-black/[.12] px-5 py-2 text-center text-sm font-medium transition-colors hover:border-zinc-400 sm:flex-none dark:border-white/[.15] dark:hover:border-zinc-600"
+                className="block rounded-full border border-black/[.12] px-5 py-2 text-center text-sm font-medium transition-colors hover:border-zinc-400 sm:inline-block sm:w-auto dark:border-white/[.15] dark:hover:border-zinc-600"
               >
                 Clear
               </Link>
-            )}
-          </div>
+            </div>
+          )}
         </div>
-      </form>
+      </AutoApplyFilterForm>
 
       {scripts.length === 0 ? (
         <p className="mt-10 text-sm text-zinc-600 dark:text-zinc-400">
@@ -512,7 +509,10 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
                     href={`/scripts/${script.id}`}
                     className="font-medium hover:underline"
                   >
-                    {script.name}
+                    {script.name}{" "}
+                    <span className="font-normal text-zinc-500 dark:text-zinc-500">
+                      v{script.version}
+                    </span>
                   </Link>
                   <span className="flex shrink-0 flex-col items-end gap-1 text-xs text-zinc-500 dark:text-zinc-400">
                     {SCRIPT_TYPE_LABELS[script.script_type]}
@@ -561,12 +561,26 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
                     >
                       <PdfIcon />
                     </a>
-                    <span
-                      title="Editing needs sign-in — coming with script uploads"
-                      className="cursor-not-allowed rounded-lg border border-black/[.12] p-2 text-zinc-300 dark:border-white/[.15] dark:text-zinc-700"
-                    >
-                      <EditIcon />
-                    </span>
+                    {user && script.owner_id === user.id ? (
+                      <Link
+                        href={`/scripts/${script.id}/edit`}
+                        title="Edit script"
+                        className="rounded-lg border border-black/[.12] p-2 text-zinc-600 transition-colors hover:border-zinc-400 hover:text-zinc-900 dark:border-white/[.15] dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-50"
+                      >
+                        <EditIcon />
+                      </Link>
+                    ) : (
+                      <span
+                        title={
+                          user
+                            ? "Only the script's uploader can edit it"
+                            : "Log in to edit your own scripts"
+                        }
+                        className="cursor-not-allowed rounded-lg border border-black/[.12] p-2 text-zinc-300 dark:border-white/[.15] dark:text-zinc-700"
+                      >
+                        <EditIcon />
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -614,17 +628,29 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
                     </Link>
                   </th>
                   <th className="px-4 py-3 font-semibold">
+                    {/* The label needs to sit centered over the column's
+                        (also centered) body content, independent of the
+                        arrow — either put the arrow in normal flow next to
+                        the label (drags the *pair* off-center, Diego's
+                        first report) or float it near the label (still
+                        reads as "inside" the centered block, Diego's
+                        second report). This pins the arrow to the cell's
+                        own right edge instead — a fixed side decoration —
+                        while the label centers on its own via the Link's
+                        `justify-center`, unaffected by the arrow's width. */}
                     <Link
                       href={buildHref(params, {
                         sort: nextSortFor(sort, "difficulty"),
                         page: null,
                       })}
-                      className="inline-flex items-center gap-1 hover:text-zinc-900 dark:hover:text-zinc-200"
+                      className="relative flex items-center justify-center hover:text-zinc-900 dark:hover:text-zinc-200"
                     >
                       Difficulty
-                      <SortArrow
-                        direction={sortDirectionFor(sort, "difficulty")}
-                      />
+                      <span className="absolute right-0 top-1/2 -translate-y-1/2">
+                        <SortArrow
+                          direction={sortDirectionFor(sort, "difficulty")}
+                        />
+                      </span>
                     </Link>
                   </th>
                   <th className="px-4 py-3 font-semibold">
@@ -633,10 +659,12 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
                         sort: nextSortFor(sort, "type"),
                         page: null,
                       })}
-                      className="inline-flex items-center gap-1 hover:text-zinc-900 dark:hover:text-zinc-200"
+                      className="relative flex items-center justify-center hover:text-zinc-900 dark:hover:text-zinc-200"
                     >
                       Type
-                      <SortArrow direction={sortDirectionFor(sort, "type")} />
+                      <span className="absolute right-0 top-1/2 -translate-y-1/2">
+                        <SortArrow direction={sortDirectionFor(sort, "type")} />
+                      </span>
                     </Link>
                   </th>
                   <th className="px-4 py-3 font-semibold">
@@ -645,10 +673,12 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
                         sort: nextSortFor(sort, "likes"),
                         page: null,
                       })}
-                      className="inline-flex items-center gap-1 hover:text-zinc-900 dark:hover:text-zinc-200"
+                      className="relative flex items-center justify-center hover:text-zinc-900 dark:hover:text-zinc-200"
                     >
                       Likes
-                      <SortArrow direction={sortDirectionFor(sort, "likes")} />
+                      <span className="absolute right-0 top-1/2 -translate-y-1/2">
+                        <SortArrow direction={sortDirectionFor(sort, "likes")} />
+                      </span>
                     </Link>
                   </th>
                   <th className="px-4 py-3 font-semibold">
@@ -657,13 +687,17 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
                         sort: nextSortFor(sort, "views"),
                         page: null,
                       })}
-                      className="inline-flex items-center gap-1 hover:text-zinc-900 dark:hover:text-zinc-200"
+                      className="relative flex items-center justify-center hover:text-zinc-900 dark:hover:text-zinc-200"
                     >
                       Views
-                      <SortArrow direction={sortDirectionFor(sort, "views")} />
+                      <span className="absolute right-0 top-1/2 -translate-y-1/2">
+                        <SortArrow direction={sortDirectionFor(sort, "views")} />
+                      </span>
                     </Link>
                   </th>
-                  <th className="px-4 py-3 font-semibold">Actions</th>
+                  <th className="px-4 py-3 text-center font-semibold">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -677,7 +711,10 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
                         href={`/scripts/${script.id}`}
                         className="font-medium hover:underline"
                       >
-                        {script.name}
+                        {script.name}{" "}
+                        <span className="font-normal text-zinc-500 dark:text-zinc-500">
+                          v{script.version}
+                        </span>
                       </Link>
                       {script.description && (
                         <div className="mt-0.5 overflow-hidden text-xs text-zinc-500 dark:text-zinc-500">
@@ -688,13 +725,16 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
                     <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
                       {script.author ?? "—"}
                     </td>
-                    <td className="px-4 py-3">
-                      <DifficultyStars difficulty={script.difficulty} />
+                    <td className="px-4 py-3 text-center">
+                      <DifficultyStars
+                        difficulty={script.difficulty}
+                        layout="stacked"
+                      />
                     </td>
-                    <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
+                    <td className="px-4 py-3 text-center text-zinc-600 dark:text-zinc-400">
                       {SCRIPT_TYPE_LABELS[script.script_type]}
                     </td>
-                    <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
+                    <td className="px-4 py-3 text-center text-zinc-600 dark:text-zinc-400">
                       <LikeButton
                         scriptId={script.id}
                         initialLiked={likedIds.has(script.id)}
@@ -702,14 +742,14 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
                         isLoggedIn={Boolean(user)}
                       />
                     </td>
-                    <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
+                    <td className="px-4 py-3 text-center text-zinc-600 dark:text-zinc-400">
                       <span className="inline-flex items-center gap-1">
                         <EyeIcon />
                         {script.view_count}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center justify-center gap-2">
                         <a
                           href={`/api/scripts/${script.id}/json`}
                           download={`${script.name}.json`}
@@ -726,12 +766,26 @@ export default async function ScriptsPage({ searchParams }: ScriptsPageProps) {
                         >
                           <PdfIcon />
                         </a>
-                        <span
-                          title="Editing needs sign-in — coming with script uploads"
-                          className="cursor-not-allowed rounded-lg border border-black/[.12] p-1.5 text-zinc-300 dark:border-white/[.15] dark:text-zinc-700"
-                        >
-                          <EditIcon />
-                        </span>
+                        {user && script.owner_id === user.id ? (
+                          <Link
+                            href={`/scripts/${script.id}/edit`}
+                            title="Edit script"
+                            className="rounded-lg border border-black/[.12] p-1.5 text-zinc-600 transition-colors hover:border-zinc-400 hover:text-zinc-900 dark:border-white/[.15] dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-50"
+                          >
+                            <EditIcon />
+                          </Link>
+                        ) : (
+                          <span
+                            title={
+                              user
+                                ? "Only the script's uploader can edit it"
+                                : "Log in to edit your own scripts"
+                            }
+                            className="cursor-not-allowed rounded-lg border border-black/[.12] p-1.5 text-zinc-300 dark:border-white/[.15] dark:text-zinc-700"
+                          >
+                            <EditIcon />
+                          </span>
+                        )}
                       </div>
                     </td>
                   </tr>

@@ -72,7 +72,12 @@ export function SettingsPanel({
   }
 
   // --- Transfer ownership --------------------------------------------------
-  const otherMembers = members.filter((m) => m.user_id !== group.owner_id);
+  // `members` (the leaderboard) now also includes left members (grayed out
+  // on the Players tab) — someone who's left can't be handed ownership, so
+  // they're filtered out here same as the current owner.
+  const otherMembers = members.filter(
+    (m) => m.user_id !== group.owner_id && m.status === "active",
+  );
   const [selectedNewOwner, setSelectedNewOwner] = useState("");
   const [confirmingTransfer, setConfirmingTransfer] = useState(false);
   const [transferPending, setTransferPending] = useState(false);

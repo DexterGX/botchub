@@ -1,8 +1,12 @@
 "use client";
 
 import { useActionState, useState, type ChangeEvent } from "react";
-import { uploadScriptAction } from "@/lib/script-upload-actions";
+import {
+  previewScriptDifficultyAction,
+  uploadScriptAction,
+} from "@/lib/script-upload-actions";
 import { INITIAL_PROFILE_STATE } from "@/lib/profile-action-state";
+import { DifficultyStars } from "@/components/DifficultyStars";
 import {
   SCRIPT_CATEGORY_LABELS,
   SCRIPT_TYPE_LABELS,
@@ -156,10 +160,18 @@ export function ScriptUploadForm({ officials }: { officials: OfficialLite[] }) {
   const [scriptType, setScriptType] = useState<ScriptType>("full");
   const [category, setCategory] = useState<ScriptCategory>("custom");
   const [fileNotice, setFileNotice] = useState<string | null>(null);
+  // Diego's ask: show the system's own auto-computed difficulty right on
+  // the upload form (not just after saving), and let it be dragged to a
+  // different value before submitting. null = nothing computed yet (no
+  // file chosen, or the file didn't parse) — the slider only appears once
+  // there's a real starting estimate to adjust.
+  const [difficulty, setDifficulty] = useState<number | null>(null);
+  const [difficultyPending, setDifficultyPending] = useState(false);
 
   async function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     setFileNotice(null);
+    setDifficulty(null);
     if (!file) return;
 
     // Independent of whether the JSON itself parses — the filename is
@@ -189,6 +201,16 @@ export function ScriptUploadForm({ officials }: { officials: OfficialLite[] }) {
       else if (versionFromFilename) setVersion(versionFromFilename);
       if (detected.scriptType) setScriptType(detected.scriptType);
       setCategory(detected.category);
+
+      // Same scoring formula the server applies after a real upload (see
+      // previewScriptDifficultyAction's own doc comment) — run against
+      // this file's own text, which we already have in hand from the
+      // read above. A failure here (network blip, sign-in expired) just
+      // leaves the slider hidden; it doesn't block the rest of the form.
+      setDifficultyPending(true);
+      const preview = await previewScriptDifficultyAction(text);
+      setDifficultyPending(false);
+      setDifficulty(preview.difficulty);
     } catch {
       // Auto-fill is a convenience, not validation — a file that doesn't
       // parse here just leaves the fields as they were; the real
@@ -253,26 +275,30 @@ export function ScriptUploadForm({ officials }: { officials: OfficialLite[] }) {
 
       <div>
         <label htmlFor="author" className="block text-sm font-medium">
-          Author{" "}
-          <span className="font-normal text-zinc-500 dark:text-zinc-400">
-            (optional)
-          </span>
+          Author
         </label>
         <input
           id="author"
           name="author"
           type="text"
+          required
           readOnly={authorLocked}
           onChange={(e) => setAuthor(e.target.value)}
           maxLength={200}
           value={author}
           placeholder={
             authorLocked
-              ? "Taken from the file's own credit, or your account name"
-              : "This file doesn't credit an author — type one, or leave blank to use your account name"
+              ? "Taken from the file's own credit"
+              : "This file doesn't credit an author — type one to upload it"
           }
           className={authorLocked ? readOnlyInputClasses : inputClasses}
         />
+        {!authorLocked && author === "" && (
+          <p className="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+            This script&apos;s file didn&apos;t credit an author — enter one
+            above to upload it.
+          </p>
+        )}
       </div>
 
       <div>
@@ -290,6 +316,44 @@ export function ScriptUploadForm({ officials }: { officials: OfficialLite[] }) {
           placeholder="A short blurb shown near the title."
           className={inputClasses}
         />
+      </div>
+
+      <div>
+        <span className="block text-sm font-medium">
+          Difficulty{" "}
+          <span className="font-normal text-zinc-500 dark:text-zinc-400">
+            (auto-estimated)
+          </span>
+        </span>
+        {difficultyPending ? (
+          <p className="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+            Estimating…
+          </p>
+        ) : difficulty === null ? (
+          <p className="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+            Choose a file above to see the system&apos;s estimate — you&apos;ll
+            be able to adjust it before submitting.
+          </p>
+        ) : (
+          <div className="mt-1.5">
+            <DifficultyStars difficulty={difficulty} size="lg" />
+            <input
+              type="range"
+              min={1}
+              max={6}
+              step={0.25}
+              value={difficulty}
+              onChange={(e) => setDifficulty(Number(e.target.value))}
+              className="mt-2 w-full accent-amber-500"
+              aria-label="Difficulty"
+            />
+            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+              Estimated from this script&apos;s characters, jinxes, and
+              rules — drag the slider if you think it guessed wrong.
+            </p>
+          </div>
+        )}
+        <input type="hidden" name="difficulty" value={difficulty ?? ""} />
       </div>
 
       <div>

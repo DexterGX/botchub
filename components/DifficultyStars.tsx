@@ -53,19 +53,46 @@ function fillPercentFor(difficulty: number, index: number): number {
 export function DifficultyStars({
   difficulty,
   size = "sm",
+  layout = "inline",
   className = "",
 }: {
   difficulty: number | null;
   /** "sm" (inline with badges/table cells) or "lg" (script detail header). */
   size?: "sm" | "lg";
+  /** "inline" (label then stars, side by side — the default everywhere)
+   * or "stacked" (label on top, stars centered below it) — Diego's ask
+   * specifically for the desktop Browse Scripts table's Difficulty
+   * column, where a single narrow table cell reads better as two short
+   * centered lines than one wide row. */
+  layout?: "inline" | "stacked";
   className?: string;
 }) {
+  // "Difficulty:" label — Diego's ask: a bare row of stars reads like a
+  // star *rating* of the script's quality, not an estimate of how hard it
+  // is to run/play. Labeling it every place it appears (table cell, card,
+  // script header) removes that ambiguity without needing to touch every
+  // call site individually.
+  const labelClass = size === "lg" ? "text-sm" : "text-xs";
+  // `leading-none` on every piece here — Diego's other report, "stars not
+  // aligned with the difficulty": a text span's default line-height is
+  // taller than its glyphs, so it was sitting a couple pixels off from
+  // the tightly-boxed star SVGs next to it even with `items-center` on
+  // the flex row. Stripping that extra line-height off both the label and
+  // the star row lets them share the same vertical center for real.
+  const containerClass =
+    layout === "stacked"
+      ? "inline-flex flex-col items-center gap-1 leading-none"
+      : "inline-flex items-center gap-1 leading-none";
+
   if (difficulty == null) {
     return (
       <span
-        className={`text-xs text-zinc-400 dark:text-zinc-600 ${className}`}
+        className={`${containerClass} text-xs text-zinc-400 dark:text-zinc-600 ${className}`}
       >
-        Difficulty not yet rated
+        <span className={`font-medium leading-none ${labelClass}`}>
+          Difficulty:
+        </span>
+        <span className="leading-none">not yet rated</span>
       </span>
     );
   }
@@ -74,14 +101,21 @@ export function DifficultyStars({
 
   return (
     <span
-      className={`inline-flex items-center gap-0.5 ${className}`}
+      className={`${containerClass} ${className}`}
       title={`Difficulty: ${difficulty.toFixed(2).replace(/0$/, "")} / 6 (auto-estimated — see the script's characters, jinxes, and rules for what drives this)`}
     >
-      {Array.from({ length: STAR_COUNT }, (_, i) => (
-        <span key={i} className={starSize}>
-          <Star fillPercent={fillPercentFor(difficulty, i)} />
-        </span>
-      ))}
+      <span
+        className={`font-medium leading-none text-zinc-500 dark:text-zinc-400 ${labelClass}`}
+      >
+        Difficulty:
+      </span>
+      <span className="inline-flex items-center gap-0.5 leading-none">
+        {Array.from({ length: STAR_COUNT }, (_, i) => (
+          <span key={i} className={`${starSize} leading-none`}>
+            <Star fillPercent={fillPercentFor(difficulty, i)} />
+          </span>
+        ))}
+      </span>
     </span>
   );
 }

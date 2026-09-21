@@ -5,6 +5,7 @@ import { signOutAction } from "@/lib/auth-actions";
 import {
   getMyGameStats,
   getMyGamesPage,
+  getMyLikedScripts,
   getMyScriptCount,
   getOfficialCharactersForFilter,
 } from "@/lib/queries";
@@ -16,6 +17,7 @@ import { AvatarPicker } from "./AvatarPicker";
 import { AvatarLightbox } from "./AvatarLightbox";
 import { AccountDesktopShell } from "./AccountDesktopShell";
 import { StatsOverview } from "./StatsOverview";
+import { FavoriteScripts } from "./FavoriteScripts";
 
 export const metadata = {
   title: "Account — BOTChub",
@@ -33,7 +35,8 @@ export default async function AccountPage({ searchParams }: AccountPageProps) {
   // hamburger (MobileNav) / tablet dropdown (AccountMenu) navigate between
   // them via this same `tab` param, mirroring the >=lg sidebar's own
   // Overview/Profile details split rather than inventing a second scheme.
-  const activeTab: "overview" | "profile" = tab === "profile" ? "profile" : "overview";
+  const activeTab: "overview" | "profile" | "favorites" =
+    tab === "profile" ? "profile" : tab === "favorites" ? "favorites" : "overview";
 
   const supabase = await createClient();
   const {
@@ -57,6 +60,7 @@ export default async function AccountPage({ searchParams }: AccountPageProps) {
     gameStats,
     scriptsCount,
     recentGamesPage,
+    likedScripts,
   ] = await Promise.all([
     supabase
       .from("profiles")
@@ -76,6 +80,7 @@ export default async function AccountPage({ searchParams }: AccountPageProps) {
     getMyGameStats(user.id),
     getMyScriptCount(user.id),
     getMyGamesPage(user.id, 1, RECENT_GAMES_LIMIT),
+    getMyLikedScripts(user.id),
   ]);
 
   const recentGames = recentGamesPage.games;
@@ -251,6 +256,8 @@ export default async function AccountPage({ searchParams }: AccountPageProps) {
               stats={gameStats}
               recentGames={recentGames}
             />
+          ) : activeTab === "favorites" ? (
+            <FavoriteScripts scripts={likedScripts} />
           ) : (
             <div>
               <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
@@ -328,6 +335,12 @@ export default async function AccountPage({ searchParams }: AccountPageProps) {
                   <div className="mt-3">{profileDetailsSection}</div>
                 </div>
               ),
+            },
+            {
+              id: "favorites",
+              label: "Favorites",
+              description: "Scripts you've liked",
+              content: <FavoriteScripts scripts={likedScripts} />,
             },
           ]}
         />

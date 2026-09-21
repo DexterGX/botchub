@@ -10,7 +10,7 @@ import {
   getGroupHistoryPage,
   getPendingJoinRequests,
 } from "@/lib/queries";
-import { formatGroupPlaytime } from "@/lib/types";
+import { formatGroupPlaytime, rankGroupRows } from "@/lib/types";
 import { Podium } from "@/app/groups/components/Podium";
 import { UserAvatar } from "@/app/groups/components/UserAvatar";
 import { PendingRequestsPanel } from "@/app/groups/components/PendingRequestsPanel";
@@ -18,6 +18,7 @@ import { RulesPanel } from "@/app/groups/components/RulesPanel";
 import { HistoryCard } from "@/app/groups/components/HistoryCard";
 import { JoinGroupButton } from "@/app/groups/components/JoinGroupButton";
 import { SettingsPanel } from "@/app/groups/components/SettingsPanel";
+import { CopyableCode } from "@/app/groups/components/CopyableCode";
 
 type Tab = "players" | "rules" | "history" | "settings";
 const BASE_TABS: { value: Tab; label: string }[] = [
@@ -77,6 +78,15 @@ export default async function GroupDetailPage({
     return `/groups/${id}?tab=${next}`;
   }
 
+  // Standard competition ("1224") ranking, Diego's ask: two players tied
+  // on points share a placement, and the next distinct total picks up at
+  // the position after both of them (1, 1, 3, 4 — not 1, 1, 2, 3). Shared
+  // with Podium (see rankGroupRows) so the two never disagree about who's
+  // tied — that mismatch was exactly Diego's "the podium doesn't seem
+  // like [the list]" report.
+  const ranks = rankGroupRows(leaderboard);
+  const leaderboardRanks = leaderboard.map((row, i) => ({ row, rank: ranks[i] }));
+
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-12">
       {group.cover_image_url && (
@@ -95,9 +105,7 @@ export default async function GroupDetailPage({
             Playtime: {formatGroupPlaytime(group.playtime_start, group.playtime_end)}
           </p>
         </div>
-        <span className="shrink-0 rounded-full bg-black/[.06] px-2.5 py-1 text-xs font-medium tabular-nums text-zinc-600 dark:bg-white/[.08] dark:text-zinc-400">
-          ID# {group.invite_code}
-        </span>
+        <CopyableCode code={group.invite_code} />
       </div>
 
       {!isMember && (
@@ -151,33 +159,53 @@ export default async function GroupDetailPage({
                 ) : (
                   <div className="rounded-2xl border border-black/[.08] p-2 dark:border-white/[.145]">
                     <ol>
-                      {leaderboard.map((row, index) => (
-                        <Fragment key={row.user_id}>
-                          {index > 0 && <RowDivider />}
-                          <li className="flex items-center gap-3 rounded-xl p-2">
-                            <RankBadge rank={index + 1} />
-                            <UserAvatar
-                              displayName={row.display_name}
-                              avatarUrl={row.avatar_url}
-                              avatarCharacterIconUrl={row.avatar_character_icon_url}
-                              size={36}
-                            />
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate font-medium">
-                                {row.display_name ?? "Unknown"}
+                      {leaderboardRanks.map(({ row, rank }, index) => {
+                        const isLeftMember = row.status === "left";
+                        const isYou = row.user_id === user.id;
+                        return (
+                          <Fragment key={row.user_id}>
+                            {index > 0 && <RowDivider />}
+                            <li
+                              className={`flex items-center gap-3 rounded-xl p-2 ${
+                                isLeftMember ? "opacity-60" : ""
+                              }`}
+                            >
+                              <RankBadge rank={rank} />
+                              <UserAvatar
+                                displayName={row.display_name}
+                                avatarUrl={row.avatar_url}
+                                avatarCharacterIconUrl={row.avatar_character_icon_url}
+                                size={36}
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="truncate font-medium">
+                                    {row.display_name ?? "Unknown"}
+                                  </span>
+                                  {isYou && (
+                                    <span className="shrink-0 rounded-full bg-red-500 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+                                      You
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-zinc-500 dark:text-zinc-500">
+                                  {row.wins}W · {row.losses}L
+                                  {row.storyteller_games > 0 &&
+                                    ` · ${row.storyteller_games} ST`}
+                                </div>
                               </div>
-                              <div className="text-xs text-zinc-500 dark:text-zinc-500">
-                                {row.wins}W · {row.losses}L
-                                {row.storyteller_games > 0 &&
-                                  ` · ${row.storyteller_games} ST`}
-                              </div>
-                            </div>
-                            <span className="shrink-0 text-sm font-semibold tabular-nums">
-                              🪙 {row.points} pts
-                            </span>
-                          </li>
-                        </Fragment>
-                      ))}
+                              {isLeftMember && (
+                                <span className="shrink-0 rounded-full bg-black/[.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-500 dark:bg-white/[.08] dark:text-zinc-400">
+                                  Quit
+                                </span>
+                              )}
+                              <span className="shrink-0 text-sm font-semibold tabular-nums">
+                                🪙 {row.points} pts
+                              </span>
+                            </li>
+                          </Fragment>
+                        );
+                      })}
                     </ol>
                   </div>
                 )}

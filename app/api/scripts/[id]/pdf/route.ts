@@ -39,6 +39,7 @@ export async function GET(
   try {
     pdfBuffer = await renderScriptPdf({
       scriptName,
+      scriptVersion: script.version,
       scriptAuthor,
       characters,
       scriptJson: script.script_json,
