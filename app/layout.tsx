@@ -92,7 +92,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                 Characters
               </Link>
               <Link href="/games" className="hover:text-foreground">
-                Games
+                Logs
               </Link>
               <Link href="/groups" className="hover:text-foreground">
                 Groups

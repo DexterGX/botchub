@@ -1,6 +1,20 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    // Server Actions default to a 1MB request body, which is plenty for
+    // /scripts/new's single-file upload but far too small for
+    // /scripts/bulk-upload's whole-folder-at-once submit (see
+    // bulkUploadScriptsAction in lib/script-upload-actions.ts) — each
+    // script JSON is capped at 200KB individually
+    // (MAX_SCRIPT_JSON_BYTES), but a batch of them adds up fast. 25MB
+    // comfortably covers a real one-sitting import even of fairly large
+    // homebrew scripts, without raising it so far that a stray huge
+    // request becomes a real resource concern.
+    serverActions: {
+      bodySizeLimit: "25mb",
+    },
+  },
   images: {
     remotePatterns: [
       {

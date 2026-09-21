@@ -19,6 +19,7 @@ import { HistoryCard } from "@/app/groups/components/HistoryCard";
 import { JoinGroupButton } from "@/app/groups/components/JoinGroupButton";
 import { SettingsPanel } from "@/app/groups/components/SettingsPanel";
 import { CopyableCode } from "@/app/groups/components/CopyableCode";
+import { CoverImageLightbox } from "@/app/groups/components/CoverImageLightbox";
 
 type Tab = "players" | "rules" | "history" | "settings";
 const BASE_TABS: { value: Tab; label: string }[] = [
@@ -90,12 +91,17 @@ export default async function GroupDetailPage({
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-12">
       {group.cover_image_url && (
-        // eslint-disable-next-line @next/next/no-img-element -- user-supplied URL
-        <img
-          src={group.cover_image_url}
-          alt=""
-          className="mb-4 h-32 w-full rounded-2xl object-cover"
-        />
+        // Diego's ask (2026-09-21): a little bigger here than the card's
+        // own h-28/h-32 banner, plus click-to-view-full-size (see
+        // CoverImageLightbox) — this is the one spot in the app where the
+        // cover photo is the main focus of the page, not a small preview.
+        <div className="mb-4">
+          <CoverImageLightbox
+            src={group.cover_image_url}
+            alt={`${group.name}'s cover photo`}
+            className="h-44 w-full rounded-2xl object-cover"
+          />
+        </div>
       )}
 
       <div className="flex flex-wrap items-start justify-between gap-3">

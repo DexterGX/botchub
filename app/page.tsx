@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getRecentScripts } from "@/lib/queries";
 import { DifficultyStars } from "@/components/DifficultyStars";
+import { CopyDiscordId } from "./CopyDiscordId";
 
 const QUICK_ACTIONS = [
   {
@@ -32,19 +33,19 @@ const QUICK_ACTIONS = [
     disabled: false,
   },
   {
+    href: "/groups",
+    title: "Groups & leaderboards",
+    description: "Track standings with your regular playgroup.",
+    icon: "🏆",
+    disabled: false,
+  },
+  {
     href: "/grimoire",
     title: "Online grimoire",
     description:
       "Run a game live with a shared, real-time grimoire. Coming soon.",
     icon: "🕯️",
     disabled: true,
-  },
-  {
-    href: "/groups",
-    title: "Groups & leaderboards",
-    description: "Track standings with your regular playgroup.",
-    icon: "🏆",
-    disabled: false,
   },
 ] as const;
 
@@ -140,6 +141,19 @@ export default async function Home() {
             ))}
           </div>
         )}
+      </section>
+
+      {/* Diego's ask (2026-09-22): a direct feedback channel right on the
+          homepage, not buried in a settings page — anyone who wants to
+          flag a bug or suggest something can just message him. Follow-up
+          ask (2026-09-21): make the ID click-to-copy instead of needing to
+          be selected by hand — see CopyDiscordId. */}
+      <section className="mx-auto w-full max-w-5xl px-6 pb-16 text-center">
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          Got feedback on the site? Message me on Discord (ID:{" "}
+          <CopyDiscordId id="264086631848476674" />) with your name and any
+          comments or suggestions.
+        </p>
       </section>
     </main>
   );
