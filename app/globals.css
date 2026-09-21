@@ -20,11 +20,14 @@
      by the app's gradient buttons) washes across the top of every page,
      and a faint dot grid gives the rest of the page some quiet texture.
      Follow-up (2026-09-21): the first pass was too subtle to notice at
-     all in light mode and not spread out enough in dark mode — both
-     glows are wider and stronger here, and dark mode's is boosted further
-     since that's the one Diego said he liked. */
-  --bg-glow-1: rgba(99, 102, 241, 0.22);
-  --bg-glow-2: rgba(168, 85, 247, 0.16);
+     all in light mode and not spread out enough in dark mode, so both
+     were widened/strengthened. Second follow-up (2026-09-21): on a
+     narrow (phone-width) window the two 1800px-wide glows fully overlap
+     since the whole viewport sits inside both of them at once, which
+     stacked into a heavier wash than intended — eased both themes back
+     down a notch. */
+  --bg-glow-1: rgba(99, 102, 241, 0.15);
+  --bg-glow-2: rgba(168, 85, 247, 0.11);
   --bg-dot: rgba(0, 0, 0, 0.05);
 }
 
@@ -38,8 +41,8 @@
 .dark {
   --background: #0a0a0a;
   --foreground: #ededed;
-  --bg-glow-1: rgba(129, 140, 248, 0.32);
-  --bg-glow-2: rgba(192, 132, 252, 0.24);
+  --bg-glow-1: rgba(129, 140, 248, 0.20);
+  --bg-glow-2: rgba(192, 132, 252, 0.15);
   --bg-dot: rgba(255, 255, 255, 0.06);
 }
 
@@ -65,24 +68,32 @@ body {
      (slightly above it) and two mirrored near the bottom (slightly below
      it), each shown once — no-repeat below is what keeps these from
      tiling back down the page the way the buggy version did. */
+  /* Third follow-up (2026-09-21): the top glow was invisible on long pages
+     like /characters (183 rows). "-10%"/"-8%" were percentages of the
+     WHOLE page height, so on a long page that offset becomes hundreds of
+     pixels and pushes the glow's ellipse entirely above y=0, off-screen —
+     the percentage only worked by coincidence on shorter pages. Anchoring
+     with the 4-value edge-offset position syntax below (`top -Npx` /
+     `bottom -Npx`) instead keeps each glow a fixed distance from its edge
+     no matter how tall the page's content is. */
   background-image:
     radial-gradient(
-      ellipse 1800px 1000px at 15% -10%,
+      ellipse 1800px 1000px at left 15% top -140px,
       var(--bg-glow-1),
       transparent 70%
     ),
     radial-gradient(
-      ellipse 1800px 1000px at 85% -8%,
+      ellipse 1800px 1000px at right 15% top -120px,
       var(--bg-glow-2),
       transparent 70%
     ),
     radial-gradient(
-      ellipse 1800px 1000px at 85% 108%,
+      ellipse 1800px 1000px at right 15% bottom -150px,
       var(--bg-glow-1),
       transparent 70%
     ),
     radial-gradient(
-      ellipse 1800px 1000px at 15% 106%,
+      ellipse 1800px 1000px at left 15% bottom -130px,
       var(--bg-glow-2),
       transparent 70%
     ),
