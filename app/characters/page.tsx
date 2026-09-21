@@ -147,13 +147,17 @@ export default async function CharactersPage({
                           page to link to. Styled as a proper bordered
                           pill button (follow-up ask, 2026-09-21) rather
                           than a plain hyperlink, matching this app's other
-                          small buttons elsewhere. */}
+                          small buttons elsewhere. Given an indigo accent
+                          (second follow-up, 2026-09-21) — the plain
+                          zinc/black border blended straight into the dark
+                          cards and was easy to miss in a long list of
+                          them. */}
                       {!c.is_homebrew && (
                         <a
                           href={characterWikiUrl(c.name)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="mt-2 inline-flex items-center gap-1 rounded-full border border-black/[.12] px-2.5 py-1 text-xs font-medium text-zinc-600 transition-colors hover:border-zinc-400 hover:text-foreground dark:border-white/[.15] dark:text-zinc-400 dark:hover:border-zinc-600"
+                          className="mt-2 inline-flex items-center gap-1 rounded-full border border-indigo-600/30 bg-indigo-600/5 px-2.5 py-1 text-xs font-medium text-indigo-700 transition-colors hover:border-indigo-500 hover:bg-indigo-600/10 dark:border-indigo-400/40 dark:bg-indigo-400/10 dark:text-indigo-300 dark:hover:border-indigo-300 dark:hover:bg-indigo-400/15"
                         >
                           More info ↗
                         </a>
