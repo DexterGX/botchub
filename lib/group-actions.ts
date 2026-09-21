@@ -292,6 +292,15 @@ export async function requestToJoinGroupAction(
     return { ok: false, status: "error", error: friendlyError(upsertError.message) };
   }
 
+  // Unlike the public/"joined" branch above, this used to return without
+  // revalidating anything — so the owner's Players tab (rendered from a
+  // server-fetched pendingRequests list) kept showing whatever it had at
+  // its last render until a hard refresh forced a fresh fetch. Diego's
+  // report ("pending request only appears if I refresh") was exactly that:
+  // revalidating the group's own page busts the cached RSC payload so the
+  // next time anyone navigates there (including the owner clicking back
+  // into it), the new request is actually in the data.
+  revalidatePath(`/groups/${groupId}`);
   return { ok: true, status: "requested" };
 }
 
@@ -520,6 +529,77 @@ export async function transferGroupOwnershipAction(
   }
 
   revalidatePath(`/groups/${groupId}`);
+  revalidatePath("/groups");
+  return { ok: true };
+}
+
+export interface LeaveGroupResult {
+  ok: boolean;
+  error?: string;
+}
+
+/** GroupCardMenu (/groups card, non-owner member): leaves a group without
+ * losing the historical record of it — routed through the leave_group()
+ * SECURITY DEFINER RPC (see its migration), which freezes the caller's own
+ * points/wins/losses/storyteller-games at their current values and flips
+ * their group_members row to status='left' rather than deleting it. The
+ * card keeps showing up on /groups afterward (grayed out, frozen score)
+ * instead of disappearing — deleting it outright is the separate,
+ * later `removeLeftGroupAction` below. */
+export async function leaveGroupAction(groupId: string): Promise<LeaveGroupResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { ok: false, error: "You need to be logged in." };
+  }
+
+  const { error } = await supabase.rpc("leave_group", { p_group_id: groupId });
+  if (error) {
+    return { ok: false, error: friendlyError(error.message) };
+  }
+
+  revalidatePath("/groups");
+  revalidatePath(`/groups/${groupId}`);
+  return { ok: true };
+}
+
+export interface RemoveLeftGroupResult {
+  ok: boolean;
+  error?: string;
+}
+
+/** GroupCardMenu (/groups card, already-left membership): removes the card
+ * from the caller's own /groups list for good — WITHOUT deleting the
+ * underlying group_members row. That row isn't just "my card": the group
+ * detail page's leaderboard (get_group_leaderboard()) reads it for every
+ * member still in the group, frozen points and "Quit" tag included. This
+ * used to be a plain client-side delete of that row, which also erased it
+ * from the shared leaderboard for everyone else the moment the ex-member
+ * cleaned up their own /groups list — Diego's report ("that user doesn't
+ * show up anymore in the list [for the group]"). Routed through the
+ * hide_left_group_membership() SECURITY DEFINER RPC instead (see its
+ * migration), which only flips a `hidden_from_own_list` flag — invisible
+ * to get_group_leaderboard() and everyone but the row's own user. */
+export async function removeLeftGroupAction(
+  groupId: string,
+): Promise<RemoveLeftGroupResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { ok: false, error: "You need to be logged in." };
+  }
+
+  const { error } = await supabase.rpc("hide_left_group_membership", {
+    p_group_id: groupId,
+  });
+  if (error) {
+    return { ok: false, error: friendlyError(error.message) };
+  }
+
   revalidatePath("/groups");
   return { ok: true };
 }

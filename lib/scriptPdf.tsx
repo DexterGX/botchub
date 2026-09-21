@@ -263,6 +263,17 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: EVIL_COLOR,
   },
+  // Diego's ask: the version next to the title, same "muted, next to the
+  // name" treatment the site itself already uses everywhere a script's
+  // name appears (browse table, homepage, account page) — same muted tone
+  // as this file's other secondary/de-emphasized text (see #a39c8a
+  // elsewhere in this stylesheet).
+  sheetTitleVersion: {
+    fontFamily: "Oswald",
+    fontSize: 11,
+    color: "#a39c8a",
+    marginLeft: 6,
+  },
   sheetByline: {
     fontFamily: "Sorts Mill Goudy",
     fontStyle: "italic",
@@ -1503,6 +1514,7 @@ function ReferencePage({
 
 async function ScriptPdfDocument({
   scriptName,
+  scriptVersion,
   scriptAuthor,
   characters,
   scriptJson,
@@ -1511,6 +1523,7 @@ async function ScriptPdfDocument({
   djinnCharacter = null,
 }: {
   scriptName: string;
+  scriptVersion: string;
   scriptAuthor: string | null;
   characters: Character[];
   scriptJson: ScriptJsonEntry[];
@@ -1569,6 +1582,7 @@ async function ScriptPdfDocument({
         <View style={styles.sheetHeaderRow}>
           <View style={styles.sheetHeaderTitleGroup}>
             <Text style={styles.sheetTitle}>{scriptName}</Text>
+            <Text style={styles.sheetTitleVersion}>v{scriptVersion}</Text>
             {scriptAuthor && (
               <Text style={styles.sheetByline}>by {scriptAuthor}</Text>
             )}
@@ -1646,6 +1660,7 @@ async function ScriptPdfDocument({
 /** Renders the full script-sheet PDF to a Buffer. */
 export async function renderScriptPdf({
   scriptName,
+  scriptVersion,
   scriptAuthor,
   characters,
   scriptJson,
@@ -1654,6 +1669,7 @@ export async function renderScriptPdf({
   djinnCharacter = null,
 }: {
   scriptName: string;
+  scriptVersion: string;
   scriptAuthor: string | null;
   characters: Character[];
   scriptJson: ScriptJsonEntry[];
@@ -1674,6 +1690,7 @@ export async function renderScriptPdf({
   const { renderToBuffer } = await import("@react-pdf/renderer");
   const doc = await ScriptPdfDocument({
     scriptName,
+    scriptVersion,
     scriptAuthor,
     characters,
     scriptJson,

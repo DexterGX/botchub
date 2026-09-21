@@ -296,6 +296,76 @@ export async function searchCharacters({
   return (data ?? []) as Character[];
 }
 
+export interface LikedScriptRow {
+  id: string;
+  name: string;
+  version: string;
+  description: string | null;
+  author: string | null;
+  script_type: ScriptType;
+  difficulty: number | null;
+  like_count: number;
+  liked_at: string;
+}
+
+/** The signed-in user's own liked (❤️) scripts, newest-liked first — the
+ * Account page's new Favorites tab. One query for the scripts themselves
+ * (via the script_likes join, RLS-scoped to the caller's own rows since
+ * there's no explicit .eq("user_id", userId) needed beyond what the
+ * policy already restricts — matches getMyGroupCodes' reasoning) plus one
+ * more for their like counts (same batched-count pattern as
+ * countMembersByGroup, rather than one count query per script). */
+export async function getMyLikedScripts(userId: string): Promise<LikedScriptRow[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("script_likes")
+    .select(
+      "created_at, script:scripts(id, name, version, description, author, script_type, difficulty)",
+    )
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+
+  // Same untyped-embed caveat noted throughout this file.
+  const rows = (data ?? []) as unknown as {
+    created_at: string;
+    script: {
+      id: string;
+      name: string;
+      version: string;
+      description: string | null;
+      author: string | null;
+      script_type: ScriptType;
+      difficulty: number | null;
+    } | null;
+  }[];
+  const liked = rows.filter(
+    (r): r is typeof r & { script: NonNullable<typeof r.script> } =>
+      r.script !== null,
+  );
+  if (liked.length === 0) return [];
+
+  const { data: likeCounts, error: countError } = await supabase
+    .from("script_likes")
+    .select("script_id")
+    .in(
+      "script_id",
+      liked.map((r) => r.script.id),
+    );
+  if (countError) throw countError;
+  const countByScriptId = new Map<string, number>();
+  for (const row of likeCounts ?? []) {
+    const id = row.script_id as string;
+    countByScriptId.set(id, (countByScriptId.get(id) ?? 0) + 1);
+  }
+
+  return liked.map((r) => ({
+    ...r.script,
+    like_count: countByScriptId.get(r.script.id) ?? 0,
+    liked_at: r.created_at,
+  }));
+}
+
 // --- Track your games (Phase 7) -------------------------------------------
 
 /** Every script, name/author/edition/type only — the "Script played" picker
@@ -511,20 +581,35 @@ export async function getMyGroupCodes(): Promise<
   { code: string; name: string }[]
 > {
   const supabase = await createClient();
-  const { data, error } = await supabase.from("groups").select("invite_code, name");
+  const { data, error } = await supabase
+    .from("groups")
+    .select("invite_code, name, playtime_end");
 
   if (error) throw error;
-  return (data ?? []).map((row) => ({
-    code: row.invite_code as string,
-    name: row.name as string,
-  }));
+
+  // A group whose playtime has ended is done taking new games (see
+  // logGameAction's own server-side enforcement of the same rule) — no
+  // point suggesting a code that would just be rejected on submit. Plain
+  // string comparison, same reasoning as logGameAction's todayStr check.
+  const todayStr = new Date().toISOString().slice(0, 10);
+  return (data ?? [])
+    .filter((row) => {
+      const playtimeEnd = row.playtime_end as string | null;
+      return !playtimeEnd || playtimeEnd >= todayStr;
+    })
+    .map((row) => ({
+      code: row.invite_code as string,
+      name: row.name as string,
+    }));
 }
 
 // --- Groups & Leaderboard ---------------------------------------------------
 
 /** Adds each group's member_count in one extra query rather than one per
  * group — cheap at today's scale, and avoids an N+1 as soon as a user is
- * in more than a couple of groups. */
+ * in more than a couple of groups. Only counts 'active' memberships — a
+ * member who's left is still a group_members row (see the leave-and-freeze
+ * migration) but shouldn't inflate the headline "N members" anywhere. */
 async function countMembersByGroup(
   groupIds: string[],
 ): Promise<Map<string, number>> {
@@ -535,7 +620,8 @@ async function countMembersByGroup(
   const { data, error } = await supabase
     .from("group_members")
     .select("group_id")
-    .in("group_id", groupIds);
+    .in("group_id", groupIds)
+    .eq("status", "active");
   if (error) throw error;
 
   for (const row of data ?? []) {
@@ -546,24 +632,41 @@ async function countMembersByGroup(
 }
 
 /** Every group the signed-in user owns or belongs to, for the /groups
- * cards list. Two lookups (owned groups, membership rows) rather than one
- * `.or()` across tables — Supabase's query builder can't express "owner_id
- * = me OR id in (my group_members' group_ids)" as a single filter without
- * string-interpolating ids into `.or()`, and this keeps the id list a
- * real array instead. */
+ * cards list — including a group they've since left, whose card stays put
+ * (grayed out, frozen points) rather than disappearing; see
+ * GroupCard/GroupCardMenu and leave_group(). Two lookups (owned groups,
+ * membership rows) rather than one `.or()` across tables — Supabase's
+ * query builder can't express "owner_id = me OR id in (my group_members'
+ * group_ids)" as a single filter without string-interpolating ids into
+ * `.or()`, and this keeps the id list a real array instead. */
 export async function getMyGroups(userId: string): Promise<GroupCardRow[]> {
   const supabase = await createClient();
 
   const { data: memberRows, error: memberError } = await supabase
     .from("group_members")
-    .select("group_id, role")
+    .select("group_id, role, status, frozen_points, hidden_from_own_list")
     .eq("user_id", userId);
   if (memberError) throw memberError;
 
-  const roleByGroupId = new Map(
-    (memberRows ?? []).map((r) => [r.group_id as string, r.role as "owner" | "member"]),
+  // A left membership the user dismissed from this list (see
+  // hide_left_group_membership()) is skipped here only — the underlying
+  // group_members row is untouched, so it still shows up, "Quit" tag and
+  // all, on get_group_leaderboard() for everyone still in the group.
+  const visibleMemberRows = (memberRows ?? []).filter(
+    (r) => !(r.status === "left" && r.hidden_from_own_list),
   );
-  const groupIds = Array.from(roleByGroupId.keys());
+
+  const membershipByGroupId = new Map(
+    visibleMemberRows.map((r) => [
+      r.group_id as string,
+      {
+        role: r.role as "owner" | "member",
+        status: r.status as "active" | "left",
+        frozenPoints: r.frozen_points as number | null,
+      },
+    ]),
+  );
+  const groupIds = Array.from(membershipByGroupId.keys());
 
   const { data, error } = await supabase
     .from("groups")
@@ -579,11 +682,31 @@ export async function getMyGroups(userId: string): Promise<GroupCardRow[]> {
   const groups = (data ?? []) as Group[];
   const counts = await countMembersByGroup(groups.map((g) => g.id));
 
-  return groups.map((g) => ({
-    ...g,
-    member_count: counts.get(g.id) ?? 0,
-    my_role: g.owner_id === userId ? "owner" : (roleByGroupId.get(g.id) ?? "member"),
-  }));
+  const rows = groups.map((g) => {
+    const membership = membershipByGroupId.get(g.id);
+    return {
+      ...g,
+      member_count: counts.get(g.id) ?? 0,
+      my_role: g.owner_id === userId ? "owner" : (membership?.role ?? "member"),
+      // An owner's own group_members row is always 'active' (they can't
+      // leave — see leave_group()), so defaulting to "active" here covers
+      // both "no row found" and the ordinary owner case identically.
+      membership_status: membership?.status ?? "active",
+      frozen_points: membership?.frozenPoints ?? null,
+    };
+  });
+
+  // Diego's ask: grayed-out (left) groups belong after the currently
+  // active ones, not wherever their created_at happened to sort them.
+  // Array.prototype.sort is stable (guaranteed since ES2019 / every
+  // current JS engine), so this only ever moves 'left' rows down — the
+  // recency order the query above already produced within each bucket is
+  // untouched.
+  return rows.sort(
+    (a, b) =>
+      (a.membership_status === "left" ? 1 : 0) -
+      (b.membership_status === "left" ? 1 : 0),
+  );
 }
 
 export interface PublicGroupSearchParams {
@@ -791,6 +914,7 @@ export async function getGroupLeaderboard(
     losses: number;
     storyteller_games: number;
     games_played: number;
+    status: "active" | "left";
   }[];
   if (rows.length === 0) return [];
 

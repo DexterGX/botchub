@@ -126,11 +126,17 @@ export async function logGameAction(
     ),
   );
 
+  // Plain "YYYY-MM-DD" comparison, same as playtime_end everywhere else
+  // (see formatGroupPlaytime) — no timezone math needed since it's a
+  // date-only field, and today's date in that same shape sorts correctly
+  // against it lexicographically.
+  const todayStr = new Date().toISOString().slice(0, 10);
+
   const groupIds: string[] = [];
   for (const code of groupCodes) {
     const { data: group, error: groupError } = await supabase
       .from("groups")
-      .select("id")
+      .select("id, name, playtime_end")
       .eq("invite_code", code)
       .maybeSingle();
     if (groupError) {
@@ -139,6 +145,19 @@ export async function logGameAction(
     if (!group) {
       return {
         error: `Group code "${code}" wasn't found — double check it, or make sure you've joined that group first.`,
+      };
+    }
+    // Once a group's playtime window has ended, it's done — no new games
+    // get tagged to it, even if someone still has its code memorized (the
+    // "Group code(s)" autocomplete already stops suggesting it — see
+    // getMyGroupCodes — but a manually-typed code has to be caught here
+    // too).
+    if (
+      typeof group.playtime_end === "string" &&
+      group.playtime_end < todayStr
+    ) {
+      return {
+        error: `"${group.name}" (ID# ${code}) has ended — its playtime is over, so new games can't be tagged to it.`,
       };
     }
     groupIds.push(group.id as string);

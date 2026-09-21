@@ -89,6 +89,7 @@ export interface Script {
 export interface ScriptSearchRow {
   id: string;
   name: string;
+  version: string;
   description: string | null;
   edition: Edition;
   script_type: ScriptType;
@@ -97,6 +98,10 @@ export interface ScriptSearchRow {
   like_count: number;
   created_at: string;
   difficulty: number | null;
+  /** Null for a script whose owner account is gone — see scripts.owner_id
+   * (nullable). Compared against the signed-in user's id to decide whether
+   * to show the Delete action on /scripts. */
+  owner_id: string | null;
   total_count: number;
 }
 
@@ -469,11 +474,21 @@ export interface Group {
   created_at: string;
 }
 
-/** A group card on /groups — the full row plus the two things only the
- * list view needs. */
+/** Whether this row's membership is currently in the running ('active') or
+ * has left and is now a frozen historical record on the leaver's own
+ * /groups list ('left') — see the group_members migration and
+ * leave_group(). */
+export type GroupMembershipStatus = "active" | "left";
+
+/** A group card on /groups — the full row plus the things only the list
+ * view needs. `frozen_points` is null for an active membership (nothing
+ * frozen yet) and the leaver's snapshotted final score once
+ * membership_status is 'left'. */
 export interface GroupCardRow extends Group {
   member_count: number;
   my_role: "owner" | "member";
+  membership_status: GroupMembershipStatus;
+  frozen_points: number | null;
 }
 
 /** A public group as shown on the /groups/join browse list — deliberately
@@ -515,6 +530,11 @@ export interface GroupLeaderboardRow {
   losses: number;
   storyteller_games: number;
   games_played: number;
+  /** 'active' members have live-computed stats; 'left' members carry their
+   * frozen-at-leave snapshot instead (see get_group_leaderboard() and the
+   * group_members migration) — still ranked in the same list rather than
+   * dropped, per Diego's ask, just rendered grayed out with a "Quit" tag. */
+  status: GroupMembershipStatus;
   display_name: string | null;
   avatar_url: string | null;
   avatar_character_id: string | null;
@@ -543,6 +563,24 @@ export interface GroupHistoryRow {
 
 export const GROUPS_PAGE_SIZE = 20;
 export const GROUP_HISTORY_PAGE_SIZE = 30;
+
+/** Standard competition ("1224") ranking, shared by the Players tab's
+ * numbered list and the Podium — a single source of truth so the two
+ * can't disagree about who's tied. Rows tied on points share a placement,
+ * and the next distinct total picks up at the position *after* all of
+ * them (1, 1, 3, 4 — not 1, 1, 2, 3). Callers pass rows already sorted
+ * points-descending (get_group_leaderboard's own `order by` guarantees
+ * this for the leaderboard), so this only ever compares each row to the
+ * one right before it. */
+export function rankGroupRows(rows: { points: number }[]): number[] {
+  const ranks: number[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    ranks.push(
+      i > 0 && rows[i].points === rows[i - 1].points ? ranks[i - 1] : i + 1,
+    );
+  }
+  return ranks;
+}
 
 /** Formats a group's playtime window the way Diego's spec showed it
  * ("9/18/26-9/22/26") — M/D/YY, no leading zeros. Both null reads as

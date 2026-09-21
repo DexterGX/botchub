@@ -124,7 +124,12 @@ export default async function Home() {
                 className="rounded-2xl border border-black/[.08] p-5 transition-colors hover:border-zinc-400 dark:border-white/[.145] dark:hover:border-zinc-600"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <div className="font-semibold">{script.name}</div>
+                  <div className="font-semibold">
+                    {script.name}{" "}
+                    <span className="font-normal text-zinc-500 dark:text-zinc-400">
+                      v{script.version}
+                    </span>
+                  </div>
                   <DifficultyStars difficulty={script.difficulty} />
                 </div>
                 <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
