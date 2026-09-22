@@ -30,5 +30,14 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    // Deno Edge Functions (see supabase/functions/botcscripts-sync) run in
+    // a completely separate runtime — Deno globals, npm:/jsr: specifiers,
+    // no path aliases — and were never meant to be part of the Next.js
+    // app's own TypeScript project. Next's tsc run (and this repo's
+    // "**/*.ts" include above) would otherwise try to type-check them
+    // against the app's config and fail on both counts.
+    "supabase/functions/**"
+  ]
 }
